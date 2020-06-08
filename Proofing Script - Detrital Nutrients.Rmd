@@ -1,0 +1,45 @@
+---
+title: "Proofing Script - Detrital Nutrients"
+author: "CJR"
+date: "June 7, 2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+This Rmarkdown will be used to proof every incoming data file for the detrital nutrients synthesis. The code needs to 
+1) Read in a file in a list
+2) Check the file for consistency (throw errors if inconsistent)
+3) Iterate these actions
+
+
+```{r Read in Data}
+#The following code assumes working directory is set where the Detrital Nutrients .csv files are located
+DetNut_Files<-list.files("./DetNut_CSVs", full.names = TRUE)#Pulls names of files into a list to be called later
+
+DetNut<-DetNut_Files%>%
+  map_df(~read_csv(.x, col_types = cols('First author' = "c",
+                                        Title = "c",
+                                        Year = "c",
+                                        Journal = "c",
+                                        DOI = "c",
+                                        Habitat = "c",
+                                        Velocity_bin = "c",
+                                        Container = "c",
+                                        lab_field = "c",
+                                        Manipulation = "c",
+                                        Light_bin = "c",
+                                        Light_PAR = "c",
+                                        Detritus_type = "c",
+                                        Plant_species = "c",
+                                        Geog_locale = "c",
+                                        Notes = "c",
+                                        .default = "n")))%>%
+  bind_rows()
+  
+
+
+
+```
