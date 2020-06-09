@@ -14,27 +14,35 @@ This Rmarkdown will be used to proof every incoming data file for the detrital n
 2) Check the file for consistency (throw errors if inconsistent)
 3) Iterate these actions
 
-
+Next we need to get the existing files into the final format of the data template, so we can actually test this code...
 ```{r Read in Data}
 #The following code assumes working directory is set where the Detrital Nutrients .csv files are located
 DetNut_Files<-list.files("./DetNut_CSVs", full.names = TRUE)#Pulls names of files into a list to be called later
 
+
+#This code tells R which columns are character vectors, with the default being numeric
 DetNut<-DetNut_Files%>%
   map_df(~read_csv(.x, col_types = cols('First author' = "c",
                                         Title = "c",
                                         Year = "c",
                                         Journal = "c",
                                         DOI = "c",
-                                        Habitat = "c",
-                                        Velocity_bin = "c",
-                                        Container = "c",
-                                        lab_field = "c",
+                                        System = "c"
+                                        Flow_Category = "c",
+                                        Decay_Method = "c",
+                                        Mesh_Size_Category = "c",
+                                        Setting = "c",
                                         Manipulation = "c",
-                                        Light_bin = "c",
-                                        Light_PAR = "c",
-                                        Detritus_type = "c",
-                                        Plant_species = "c",
-                                        Geog_locale = "c",
+                                        LULC_Category = "c",
+                                        Light_Category = "c",
+                                        Detritus_Type = "c",
+                                        Detritus_Condition = "c",
+                                        Detritus_Species = "c",
+                                        Geog_Locale = "c",
+                                        LULC_Quantified = "c",
+                                        Inverts_AddInfo = "c",
+                                        Microbes_AddInfo = "c",
+                                        CNP_AddInfo = "c",
                                         Notes = "c",
                                         .default = "n")))%>%
   bind_rows()
