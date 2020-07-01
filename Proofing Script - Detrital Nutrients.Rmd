@@ -7,6 +7,7 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
 ```
 
 This Rmarkdown will be used to proof every incoming data file for the detrital nutrients synthesis. The code needs to 
@@ -15,19 +16,53 @@ This Rmarkdown will be used to proof every incoming data file for the detrital n
 3) Iterate these actions
 
 Next we need to get the existing files into the final format of the data template, so we can actually test this code...
+
+
+###
+txttest_Files<-list.files("c:/Users/robbi/Desktop/txt_test", full.names = TRUE)
+
+txttest<-txttest_Files%>%
+  map(~read_tsv(.x, col_types = cols(First_Author = "c",
+                                     Title = "c",
+                                     Year = "c",
+                                     Journal = "c",
+                                     DOI = "c",
+                                     System = "c",
+                                     Flow_Category = "c",
+                                     Decay_Method = "c",
+                                     Mesh_Size_Category = "c",
+                                     Setting = "c",
+                                     Manipulation = "c",
+                                     Start_Date = "c",
+                                     LULC_Category = "c",
+                                     Light_Category = "c",
+                                     Detritus_Type = "c",
+                                     Detritus_Condition = "c",
+                                     Detritus_Species = "c",
+                                     Geog_Locale = "c",
+                                     Lat_Long = "c",
+                                     LULC_Quantified = "c",
+                                     Inverts_AddInfo = "c",
+                                     Microbes_AddInfo = "c",
+                                     CNPFluxes_AddInfo = "c",
+                                     Notes = "c",
+                                     .default = "n"))
+      
+  )%>%
+  bind_rows()
 ```{r Read in Data}
-#The following code assumes working directory is set where the Detrital Nutrients .csv files are located
-DetNut_Files<-list.files("./DetNut_CSVs", full.names = TRUE)#Pulls names of files into a list to be called later
+#The following code assumes working directory is set where the Detrital Nutrients .csv files are located (in Dropbox folder "Synthesis Data csv Files")
+DetNut_Files<-list.files("c:/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesis Data csv Files", full.names = TRUE)#Pulls names of files into a list to be called later
 
 
-#This code tells R which columns are character vectors, with the default being numeric
+#This code tells R which columns should be read as character vectors, with the default being numeric. This actually serves as our first check because it spits errors when these things might not be reasonable
 DetNut<-DetNut_Files%>%
-  map_df(~read_csv(.x, col_types = cols('First author' = "c",
+  map(~read_csv(.x, col_types = cols('First author' = "c",
                                         Title = "c",
                                         Year = "c",
                                         Journal = "c",
                                         DOI = "c",
-                                        System = "c"
+                                        System = "c",
                                         Flow_Category = "c",
                                         Decay_Method = "c",
                                         Mesh_Size_Category = "c",
@@ -42,12 +77,52 @@ DetNut<-DetNut_Files%>%
                                         LULC_Quantified = "c",
                                         Inverts_AddInfo = "c",
                                         Microbes_AddInfo = "c",
-                                        CNP_AddInfo = "c",
+                                        CNPFluxes_AddInfo = "c",
                                         Notes = "c",
-                                        .default = "n")))%>%
-  bind_rows()
+                                        .default = "n"))
+      
+         )
+
+
+
+#map_df automatically binds rows
   
+
+#Eventually we'll just pass this using a pipe
+
+```
+
+
+
+```{r}
+# For this one, let's see if we've gotten ahead of ourselves, because we're already getting evaluative by assigning these
+
+DetNut_named<-enframe(DetNut, 
+                      name = DetNut_Files,
+                      value = DetNut)
+
+#eval_name <- function (df)
+#  unique(DOI)>1
+
+      
+         
+
+```
+
+```{r}
+#in this chunk we want to take DetNut and write in our evaluative functions
+# let's check every file for whether any file has non-allowable Mesh_Size_Category factors
+
 
 
 
 ```
+
+
+for{
+i in 1:NFiles
+do thing 1 to variableX
+do thing 2 to variableX
+}
+
+Could use exec after storing each function in a list
