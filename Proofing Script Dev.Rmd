@@ -102,11 +102,5 @@ for (i in 1:length(QA)) {
 }
 ```
 
-General form of testthat functions
 
-test_that("some descriptor of test as a name",
-          {
-           expect_equal(myfunction(mytestdata), value_it_should_be) 
-          }
-  )
   
