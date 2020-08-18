@@ -119,10 +119,4 @@ DetNut_named<-enframe(DetNut,
 ```
 
 
-for{
-i in 1:NFiles
-do thing 1 to variableX
-do thing 2 to variableX
-}
 
-Could use exec after storing each function in a list
