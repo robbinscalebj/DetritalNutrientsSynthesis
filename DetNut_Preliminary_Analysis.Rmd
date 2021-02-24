@@ -1,0 +1,351 @@
+---
+title: "DetNut Preliminary Analysis"
+author: "CJR"
+date: "1/24/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(assertr)
+library(janitor)
+
+```
+
+```{r Set working directory}
+#Use the test directory on the Desktop
+DetNut_Files<-list.files("/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesis Data txt Files", full.names = TRUE) #Obviously change this to where you need to
+head(DetNut_Files)
+
+```
+This will read in all the files into a list. There will be many errors because of the lack of proofing, just ignore them.
+```{r Read files}
+DetNut<-DetNut_Files%>%
+  map(~read_tsv(.x, col_types = cols(First_Author = "c",
+                                     Title = "c",
+                                     Year = "c",
+                                     Journal = "c",
+                                     DOI = "c",
+                                     System = "c",
+                                     Flow_Category = "c",
+                                     Decay_Method = "c",
+                                     Mesh_Size_Category = "c",
+                                     Setting = "c",
+                                     Manipulation = "c",
+                                     LULC_Category = "c",
+                                     Light_Category = "c",
+                                     Detritus_Type = "c",
+                                     Detritus_Condition = "c",
+                                     Detritus_Species = "c",
+                                     Remain_Mass_Category = "c",
+                                     Component_Mass_Category = "c",
+                                     Geog_Locale = "c",
+                                     LULC_Quantified = "c",
+                                     Inverts_AddInfo = "c",
+                                     Microbes_AddInfo = "c",
+                                     CNPFluxes_AddInfo = "c",
+                                     C_Method = "c", 
+                                     N_Method = "c",
+                                     P_Method = "c", 
+                                     Ratio_Type = "c",
+                                     Notes = "c",
+                                     .default = "n"))
+         )
+
+names(DetNut) <- DetNut_Files%>%
+  str_remove("/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesis Data txt Files/")
+
+
+```
+
+Right now, there hasn't been any manual proofing so there are some extra variable names that need fixing after unnesting the list-columns. For now we can just ignore those as they'll get cleaned up in proofing. A few rows will get deleted in the below, as well as some factor recoding.
+
+names to fix - Initial_DM_g, First author,Meas_day, Geog_locale, Meas_Day_1,Mass_Per_Remaining, Total_phenolics, cond_uS.cm,DOC_mg.L_1, Initial_mass_g
+
+
+This next bit takes our list of dataframes and pushes them into one dataframe
+```{r}
+DetNut2 <- DetNut%>%
+  map_df(as_tibble)%>%
+  select(-X59,-X60)%>%
+  select(-60)%>%
+  remove_empty(which = "rows")%>%
+  mutate(Remain_Mass_Category = fct_recode(Remain_Mass_Category, dm = "dry_mass", afdm_postleach = "AFDM_postleach", afdm = "AFDM", dm = "DM"))
+  
+  
+
+
+```
+
+
+
+```{r}
+
+
+
+```
+
+Next code groups by individual time series (again, likely some preliminary errors here, but OK for now) and creates some new variables that will be helpful in analysis, and makes it into a new dataframe (DetNut.ts) that can be used for data visualization and analysis. A lot of these use 'case_when' to denote particular conditions when a variable should be mutated (e.g., leave the variable alone if it's not NA, but create an approximate alternative from other variables when possible)
+```{r}
+#treat time series for analysis - what's the grouping structure? First_Author, Title, and Time_Series ID? Need to make an index number for EACH TIME SERIES
+
+DetNut.ts <- DetNut2%>%
+  group_by(First_Author, Title, Time_Series_ID)%>%
+  mutate(series_index = group_indices())%>%#creates a unique index for each time series
+  ungroup()%>%
+  group_by(series_index)%>% #functionally, used to confine any window functions like first() to a time series rather than the first observation of whole dataframe
+  mutate(initial_C = first(C_per),
+         initial_N = first(N_per),
+         initial_P = first(P_per),
+         initial_CN = first(CN_molar),
+         initial_CP = first(CP_molar),
+         initial_NP = first(NP_molar))%>%
+  #next bit creates fairly even distribution of initial N categories
+  mutate(initial_N_category = case_when(initial_N>2.6 ~ "high",
+                                initial_N>1.5 & initial_N <= 2.6 ~ "med-high",
+                                initial_N>1.0 & initial_N <= 1.5 ~ "med",
+                                initial_N>0.7 & initial_N <= 1.0 ~ "low-med",
+                              initial_N <= 0.7~ "Low"))%>%
+  #next normalizes CNP values to initial measurements for each time series (don't know if useful for stoich but did it anyway)
+  mutate(C_prop_initial = C_per/first(C_per),
+         N_prop_initial = N_per/first(N_per),
+         P_prop_initial = P_per/first(P_per),
+         CN_prop_initial = CN_molar/first(CN_molar),
+         CP_prop_initial = CN_molar/first(CP_molar),
+         NP_prop_initial = CN_molar/first(NP_molar))%>%
+  #next approximates percent mass remaining (if not provided) at each measurement day from k value
+  mutate(Mass_per_remaining = case_when(is.na(Mass_per_remaining) & Remain_Mass_Category == "afdm" ~ exp(k*Meas_Day)*100,
+                                        is.na(Mass_per_remaining) & Remain_Mass_Category == "dm" ~ exp(k*Meas_Day)*100,
+                                        TRUE ~ Mass_per_remaining))%>%
+  #next develops an approximation of N and P availability - imperfect, but aggregates the N and P data together about as well as possible without assuming anything else
+  mutate(Water_DIN_ug.L = case_when(is.na(Water_DIN_ug.L) & is.na(Water_NH4_ug.L) ~ Water_NO3_ug.L,
+                                    is.na(Water_DIN_ug.L) ~ Water_NO3_ug.L + Water_NH4_ug.L,
+                                    TRUE ~ Water_DIN_ug.L),
+         TN_approx = case_when(is.na(Water_TN_ug.L) ~ Water_DIN_ug.L,
+                               TRUE ~ Water_TN_ug.L),
+         TP_approx = case_when(is.na(Water_TP_ug.L) ~ Water_SRP_ug.L,
+                               TRUE ~ Water_TP_ug.L))%>%
+  #next creates a Temperature average when there are multiple temp values given - THIS NEEDS TO BE CHANGED INTO A TIME-WEIGHTED AVERAGE
+  mutate(Temperature_C_avg = case_when(n_distinct(Temperature_C) >1 ~ mean(Temperature_C), 
+                                       TRUE ~ Temperature_C))%>%
+  mutate(Deg_days = Temperature_C * (Meas_Day-first(Meas_Day))) #degree days
+
+#must use summarize to create missing k values from Mass_per_remaining
+
+#DetNut.ts_k <- DetNut.ts%>%
+#  group_by(series_index)%>%
+#  summarize(k = )
+  
+  
+#how to deal with postleach data - can only use when excluding leaching data, and then need to correct mass remaining values of non-leached to 100% on day 2ish if possible. Probably not worth using those postleach data but they are >100 data points, but mostly from 1 study. dm_postleach even smaller. Lots of NA under that, though. 
+
+
+
+#time integrated conditions - already did with degree days, but could do to approximate a cumulative N load, P load, etc.
+
+
+
+
+```
+
+
+The next code to be developed should describe the information on our time series. The goal of the following code is to understand the response variables - especially, their distribution of values and number of time series The developed code right now is an inefficient way of recording how many series (at least two data points) contain CNP/stoich data. Then  plots the distributions of these data to look for any weird thing. The final bit of code creates an alternative dataframe with some weird values omitted, that could be used for some preliminary analysis (again, this has to be looked at a little bit closer once everything is proofed). 
+
+Also to address: How many series use leaf litter vs wood vs something else? How many in lakes vs streams? It would also be cool if somebody could plot up all the unique geographic coordinates onto a world map. That can be done in R or elsewhere.
+```{r response var time series description}
+
+#need to compile unique information on each time series
+#Number of series - CN, N, CP, P, NP - how many series with leaf litter vs wood
+
+DetNut.ts.c<-DetNut.ts%>%
+  filter(C_per != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  #ungroup()%>%
+  summarize(numN = n_distinct(series_index))
+
+DetNut.ts.n<-DetNut.ts%>%
+  filter(N_per != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  ungroup()%>%
+  summarize(numN = n_distinct(series_index))
+
+DetNut.ts.p<-DetNut.ts%>%
+  filter(P_per != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  ungroup()%>%
+  summarize(numN = n_distinct(series_index))
+
+DetNut.ts.cn<-DetNut.ts%>%
+  filter(CN_molar != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  ungroup()%>%
+  summarize(numN = n_distinct(series_index))
+
+DetNut.ts.cp<-DetNut.ts%>%
+  filter(CP_molar != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  ungroup()%>%
+  summarize(numN = n_distinct(series_index))
+
+DetNut.ts.np<-DetNut.ts%>%
+  filter(NP_molar != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  ungroup()%>%
+  summarize(numN = n_distinct(series_index))
+
+
+DetNut.ts%>% filter(C_per != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = C_per))+
+  geom_histogram()
+DetNut.ts%>% filter(N_per != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = N_per))+
+  geom_histogram()
+DetNut.ts%>% filter(P_per != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = P_per))+
+  geom_histogram()
+DetNut.ts%>% filter(CN_molar != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = CN_molar))+
+  geom_histogram()
+DetNut.ts%>% filter(CP_molar != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = CP_molar))+
+  geom_histogram()
+DetNut.ts%>% filter(NP_molar != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = NP_molar))+
+  geom_histogram()
+
+DetNut_a <- DetNut.ts%>%
+  filter(N_per < 25)%>%
+  filter(P_per < 2)%>%
+  filter(CN_molar < 600)%>%
+  filter(CP_molar < 20000)%>%
+  filter(NP_molar < 1000)%>%
+  filter(C_prop_initial <2.5)
+
+
+```
+
+The goal of the following code is to understand the predictor variables - especially, their distribution of values and availability. The following code moves in that direction but is still fairly inefficient.
+
+```{r predictor descriptions}
+#distribution  of TN_approx, TP_approx
+DetNut.ts.tn<-DetNut.ts%>%
+  filter(Water_NO3_ug.L != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  #ungroup()%>%
+  summarize(numN = n_distinct(series_index),
+            TN = mean(Water_NO3_ug.L))
+
+DetNut.ts.tn%>% ggplot(aes(x = TN))+
+  geom_histogram()
+
+DetNut.ts.tp<-DetNut.ts%>%
+  filter(TP_approx != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  #ungroup()%>%
+  summarize(numN = n_distinct(series_index),
+            TP = mean(TP_approx))
+
+DetNut.ts.tp%>% ggplot(aes(x = TP))+
+  geom_histogram()
+
+DetNut.ts.temp<-DetNut.ts%>%
+  filter(Temperature_C_avg != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  #ungroup()%>%
+  summarize(numN = n_distinct(series_index), 
+            temp = mean(Temperature_C_avg))
+
+DetNut.ts.temp%>% ggplot(aes(x = temp))+
+  geom_histogram()
+
+DetNut.ts.ph<-DetNut.ts%>%
+  filter(pH != "NA")%>%
+  filter(n_distinct(Meas_Day) >= 2)%>%
+  #ungroup()%>%
+  summarize(numN = n_distinct(series_index), 
+            pH = mean(pH))
+
+DetNut.ts.ph%>% ggplot(aes(x = pH))+
+  geom_histogram()
+
+```
+
+#Breakdown plots
+Relationships between detrital mass loss/breakdown across our dataset?
+```{r Breakdown plots}
+#probably good to derive a k value for time series that only have Mass remaining values
+
+```
+
+
+#N response plots
+## N plots against time-based variables
+
+Note the use of DetNut_a here, which is a preliminarily pared-down dataframe for some of these analyses. Further 
+```{r N time plots}
+DetNut_a%>% #dataframe passed to some filtering functions 
+  #filter(Detritus_Type == "leaves")%>%
+  filter(initial_N_category != "NA")%>%
+  filter(First_Author != "Debusk")%>% #can be used to filter out any studies with unproofed data problems
+  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
+  #filter(Meas_Day >=2)%>% #can be used to, e.g., filter any 'leaching' days
+  ggplot(aes(x = Deg_days, y = N_per, color = initial_N_category))+
+  #geom_point()+
+  #scale_x_continuous(limits = c(0,2))+ #can set limits of x axis
+  #scale_y_continuous(limits = c(0,2))+
+  geom_smooth(method = "loess")+
+  #facet_wrap(.~Remain_Mass_Category)
+  NULL
+
+DetNut_a%>%
+  #filter(Detritus_Type == "leaves")%>%
+  filter(initial_N_category != "NA")%>%
+  filter(First_Author != "Debusk")%>%
+  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
+  #filter(Meas_Day >=2)%>%
+  ggplot(aes(x = Mass_per_remaining, y = N_prop_initial, color = initial_N_category))+
+  geom_point()+
+  #scale_x_continuous(limits = c(0,2))+
+  #scale_y_continuous(limits = c(0,2))+
+  geom_smooth(method = "loess")+
+  scale_x_reverse()+
+  #facet_wrap(.~Remain_Mass_Category)
+  NULL
+
+DetNut_a%>%
+  #filter(Detritus_Type == "leaves")%>%
+  filter(initial_N_category != "NA")%>%
+  filter(First_Author != "Debusk")%>%
+  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
+  #filter(Meas_Day >=2)%>%
+  ggplot(aes(x = Mass_per_remaining, y = CN_molar, color = initial_N_category))+
+  geom_point()+
+  #scale_x_continuous(limits = c(0,2))+
+  #scale_y_continuous(limits = c(0,2))+
+  geom_smooth(method = "loess")+
+  #facet_wrap(.~Remain_Mass_Category)
+  NULL
+
+
+
+```
+
+```{r N predictor relationship plots}
+DetNut_a%>%
+  #filter(Detritus_Type == "leaves")%>%
+  filter(initial_N_category != "NA")%>%
+  filter(First_Author != "Debusk")%>%
+  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
+  #filter(Meas_Day >=2)%>%
+  ggplot(aes(x = TN_approx, y = N_per, color = initial_N_category))+
+  geom_point()+
+  #scale_x_continuous(limits = c(0,2))+
+  #scale_y_continuous(limits = c(0,2))+
+  #geom_smooth(method = "loess")+
+  #facet_wrap(.~Remain_Mass_Category)
+  NULL
+
+```
+
+#P response plots
+
+#C:N response plots
+
+#C:P response plots
+
+#N:P response plots
