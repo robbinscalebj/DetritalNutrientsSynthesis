@@ -1,15 +1,17 @@
 ---
-title: "DetNut Preliminary Analysis"
+title: "DetNut_LitterStreams"
 author: "CJR"
-date: "1/24/2021"
+date: "2/27/2021"
 output: html_document
 ---
-
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(assertr)
 library(janitor)
+library(mgcv)
+library(gratia)
+library(tidymv)
 
 ```
 
@@ -19,7 +21,7 @@ DetNut_Files<-list.files("/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesi
 head(DetNut_Files)
 
 ```
-This will read in all the files into a list. There will be many errors because of the lack of proofing, just ignore them.
+#Whole set ingest and carpentry
 ```{r Read files}
 DetNut<-DetNut_Files%>%
   map(~read_tsv(.x, col_types = cols(First_Author = "c",
@@ -59,12 +61,6 @@ names(DetNut) <- DetNut_Files%>%
 
 ```
 
-Right now, there hasn't been any manual proofing so there are some extra variable names that need fixing after unnesting the list-columns. For now we can just ignore those as they'll get cleaned up in proofing. A few rows will get deleted in the below, as well as some factor recoding.
-
-names to fix - Initial_DM_g, First author,Meas_day, Geog_locale, Meas_Day_1,Mass_Per_Remaining, Total_phenolics, cond_uS.cm,DOC_mg.L_1, Initial_mass_g
-
-
-This next bit takes our list of dataframes and pushes them into one dataframe
 ```{r}
 DetNut2 <- DetNut%>%
   map_df(as_tibble)%>%
@@ -96,11 +92,11 @@ DetNut.ts <- DetNut2%>%
          initial_NP = first(NP_molar),
          initial_Lignin = first(Lignin_per))%>%
   #next bit creates fairly even distribution of initial N categories
-  mutate(initial_N_category = case_when(initial_N>2.6 ~ "high",
-                                initial_N>1.5 & initial_N <= 2.6 ~ "med-high",
-                                initial_N>1.0 & initial_N <= 1.5 ~ "med",
-                                initial_N>0.7 & initial_N <= 1.0 ~ "low-med",
-                              initial_N <= 0.7~ "Low"))%>%
+  mutate(initial_N_category = case_when(initial_N>2.5 ~ "high >2.5",
+                                initial_N>1.5 & initial_N <= 2.5 ~ "med-high 1.5 -2.5",
+                                initial_N>1.1 & initial_N <= 1.5 ~ "med 1.1-1.5",
+                                initial_N>0.75 & initial_N <= 1.1 ~ "low-med 0.75-1.1",
+                              initial_N <= 0.75~ "Low <0.75"))%>%
   #next normalizes CNP values to initial measurements for each time series (don't know if useful for stoich but did it anyway)
   mutate(C_prop_initial = C_per/first(C_per),
          N_prop_initial = N_per/first(N_per),
@@ -161,81 +157,10 @@ unique(DetNut.ts$mesh_cat)
 
 ```
 
-
-The next code to be developed should describe the information on our time series. The goal of the following code is to understand the response variables - especially, their distribution of values and number of time series The developed code right now is an inefficient way of recording how many series (at least two data points) contain CNP/stoich data. Then  plots the distributions of these data to look for any weird thing. The final bit of code creates an alternative dataframe with some weird values omitted, that could be used for some preliminary analysis (again, this has to be looked at a little bit closer once everything is proofed). 
-
-Also to address: How many series use leaf litter vs wood vs something else? How many in lakes vs streams? It would also be cool if somebody could plot up all the unique geographic coordinates onto a world map. That can be done in R or elsewhere.
-```{r response var time series description}
-
-#need to compile unique information on each time series
-#Number of series - CN, N, CP, P, NP - how many series with leaf litter vs wood
-
-DetNut.ts.c<-DetNut.ts%>%
-  filter(C_per != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  ungroup()%>%
-  summarize(n_C = n_distinct(series_index))
-
-DetNut.ts.n<-DetNut.ts%>%
-  filter(N_per != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  ungroup()%>%
-  summarize(n_N = n_distinct(series_index))
-
-DetNut.ts.p<-DetNut.ts%>%
-  filter(P_per != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  ungroup()%>%
-  summarize(n_P = n_distinct(series_index))
-
-DetNut.ts.cn<-DetNut.ts%>%
-  filter(CN_molar != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  ungroup()%>%
-  summarize(n_CN = n_distinct(series_index))
-
-DetNut.ts.cp<-DetNut.ts%>%
-  filter(CP_molar != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  ungroup()%>%
-  summarize(n_CP = n_distinct(series_index))
-
-DetNut.ts.np<-DetNut.ts%>%
-  filter(NP_molar != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  ungroup()%>%
-  summarize(n_NP = n_distinct(series_index))
-
-
-DetNut.ts%>% filter(C_per != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = C_per))+
-  geom_histogram()
-DetNut.ts%>% filter(N_per != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = N_per))+
-  geom_histogram()
-DetNut.ts%>% filter(P_per != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = P_per))+
-  geom_histogram()
-DetNut.ts%>% filter(CN_molar != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = CN_molar))+
-  geom_histogram()
-DetNut.ts%>% filter(CP_molar != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = CP_molar))+
-  geom_histogram()
-DetNut.ts%>% filter(NP_molar != "NA")%>%filter(n_distinct(Meas_Day) >= 2)%>%ggplot(aes(x = NP_molar))+
-  geom_histogram()
-
-DetNut_a <- DetNut.ts%>%
-  filter(N_per < 25)%>%
-  filter(P_per < 2)%>%
-  filter(CN_molar < 600)%>%
-  filter(CP_molar < 20000)%>%
-  filter(NP_molar < 1000)%>%
-  filter(C_prop_initial <2.5)
-
-
-```
-
-
 ```{r}
 
 DetNut.nest <- DetNut.ts%>%
-  group_by(First_Author, Title, Journal, series_index, Detritus_Type, mesh_cat, Decay_Method, initial_N, initial_P, initial_CN, initial_CP, initial_NP, System, Lotic_Lentic, Detritus_Species, TN_approx_avg, TP_approx_avg, Detritus_Condition, Temperature_C_avg)%>%
+  group_by(First_Author, Title, Journal, series_index, Detritus_Type, Velocity_m.s, mesh_cat, Decay_Method, initial_N, initial_P, initial_CN, initial_CP, initial_NP, initial_Lignin, initial_N_category, System, Lotic_Lentic, Detritus_Species, TN_approx_avg, TP_approx_avg, Detritus_Condition, Temperature_C_avg)%>%
   nest()%>%
   mutate(Series_Measurements = map_dbl(data, nrow),
          Detritus_Type = as_factor(Detritus_Type))%>%
@@ -254,7 +179,8 @@ DetNut.nest<-DetNut.nest%>%
   mutate(k_model = map(k_model, ~filter(., term == "Meas_Day")))%>%
   mutate(k_model = map_dbl(k_model, ~pluck(., "estimate")*-1))%>%
   mutate(K_model_degday = k_model/Temperature_C_avg)%>%
-  mutate(Series_Days = map_dbl(data, ~last(.$Meas_Day, order_by = .$Meas_Day)))
+  mutate(Series_Days = map_dbl(data, ~last(.$Meas_Day, order_by = .$Meas_Day)))%>%
+  mutate(Lignin_N = initial_Lignin/initial_N)
 
 DetNut.ts2 <- DetNut.nest%>%
   unnest()
@@ -284,158 +210,232 @@ DetNut_systemstypescond<- DetNut.nest%>%
   count(System, Detritus_Type, Detritus_Condition)%>%
   mutate(proportion = n/sum(n))
 
+DetNut_ncat<- DetNut.nest%>%
+  ungroup()%>%
+  filter(!is.na(initial_N))%>%
+  count(initial_N_category)%>%
+  mutate(proportion = n/sum(n))
+
 DetNut.nest%>%
   ggplot(aes(x = Series_Days))+
   geom_histogram()
-#75% of series < 140 days, median is 74, 90% >28 days in length
 
+```
+
+#Pare down to stream-litter
+```{r}
+#litter_lotic for analysis of time series
+litter_lotic <- DetNut.ts%>%
+  filter(Lotic_Lentic == "Lotic" & Detritus_Type == "leaves")%>%
+  filter(mesh_cat != "open")%>%
+  filter(TP_approx_avg <250 & TN_approx_avg <5000)%>%
+  ungroup()%>%
+  group_by(series_index)%>%
+  mutate(Series_Measurements = NROW(N_per))%>%
+  filter(Series_Measurements > 1)%>%
+  filter(Mass_per_remaining > 15)%>%
+  mutate(postleach_category = case_when(Remain_Mass_Category == "afdm" | Remain_Mass_Category == "dm" ~ "preleach",
+                                        Remain_Mass_Category == "afdm_postleach" ~ "postleach"))%>%
+  mutate(series_index = as_factor(series_index),
+         Mass_per_loss = 100-(Mass_per_remaining),
+         initial_N_category = as_factor(initial_N_category),
+         mesh_cat = as_factor(mesh_cat),
+         Remain_Mass_Category = as_factor(Remain_Mass_Category))
+
+litter_lotic_postleach <- litter_lotic%>%
+    filter(case_when(postleach_category == "preleach" ~ Meas_Day >=2,
+                   postleach_category == "postleach" ~ Meas_Day >=0))%>%
+    filter(CN_molar>0 & !is.na(CN_molar))%>%
+    mutate(initial_CN_category = case_when(initial_CN>100 ~ "high ",
+                                initial_CN>75 & initial_CN <= 100 ~ "med-high ",
+                                initial_CN>50 & initial_CN <= 75 ~ "med ",
+                                initial_CN>25 & initial_CN <= 50 ~ "low-med ",
+                              initial_CN <= 25~ "Low "),
+           initial_CN_category = as_factor(initial_CN_category))
+
+#litter_lotic.nest for analysis of aggregated variables with k and also description of time series
+litter_lotic.nest <- DetNut.nest%>%
+  filter(Lotic_Lentic == "Lotic" & Detritus_Type == "leaves")%>%
+  filter(mesh_cat != "open")%>%
+  filter(TP_approx_avg <250 & TN_approx_avg <5000)%>%
+  filter(K_model_degday < 0.005)
 
 ```
 
 
-
-The goal of the following code is to understand the predictor variables - especially, their distribution of values and availability. The following code moves in that direction but is still fairly inefficient.
-
-```{r predictor descriptions}
-#distribution  of TN_approx, TP_approx
-DetNut.ts.tn<-DetNut.ts%>%
-  filter(Water_NO3_ug.L != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  #ungroup()%>%
-  summarize(numN = n_distinct(series_index),
-            TN = mean(Water_NO3_ug.L))
-
-DetNut.ts.tn%>% ggplot(aes(x = TN))+
-  geom_histogram()
-
-DetNut.ts.tp<-DetNut.ts%>%
-  filter(TP_approx != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  #ungroup()%>%
-  summarize(numN = n_distinct(series_index),
-            TP = mean(TP_approx))
-
-DetNut.ts.tp%>% ggplot(aes(x = TP))+
-  geom_histogram()
-
-DetNut.ts.temp<-DetNut.ts%>%
-  filter(Temperature_C_avg != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  #ungroup()%>%
-  summarize(numN = n_distinct(series_index), 
-            temp = mean(Temperature_C_avg))
-
-DetNut.ts.temp%>% ggplot(aes(x = temp))+
-  geom_histogram()
-
-DetNut.ts.ph<-DetNut.ts%>%
-  filter(pH != "NA")%>%
-  filter(n_distinct(Meas_Day) >= 2)%>%
-  #ungroup()%>%
-  summarize(numN = n_distinct(series_index), 
-            pH = mean(pH))
-
-DetNut.ts.ph%>% ggplot(aes(x = pH))+
-  geom_histogram()
-
-```
-
-#Breakdown models - streams only
-Relationships between detrital mass loss/breakdown across our dataset?
-```{r Breakdown plots}
-
-
-#k can only be predicted with aggregated variables like loading, average temp
-DetNut.nest%>%
-  filter(k_model <0.005)%>%
-  filter(initial_N < 3)%>%
-  filter(initial_P < 0.25)%>%
+#Breakdown
+```{r}
+litter_lotic.nest%>%
+  #filter(K_model_degday <0.004)%>%
+  #filter(initial_N < 3)%>%
+  #filter(initial_P < 0.25)%>%
   filter(mesh_cat != "open")%>%
   #filter(TP_approx_avg <250 & TN_approx_avg <5000)%>%
-  ggplot(aes(x = initial_N, y = K_model_degday, color = Lotic_Lentic))+
+  ggplot(aes(x = Temperature_C_avg, y = k_model))+
   geom_point()+
   geom_smooth(method = "loess")
 
 ```
-```{r breakdown models}
+Competing models for breakdown
+
+- what determines the rate at which litter moves through decomposition, its detrital ontogeny
+```{r breakdown models kd}
+
+
+m1<-lm(k_model ~ Temperature_C_avg*initial_N*mesh_cat*TN_approx_avg, data = litter_lotic.nest)
+m2<-lm(k_model ~ Temperature_C_avg*initial_P*mesh_cat*TN_approx_avg, data = litter_lotic.nest)
+m3<-lm(k_model ~ Temperature_C_avg*initial_CN*TN_approx_avg*mesh_cat, data = litter_lotic.nest)
+m4<-lm(k_model ~ Temperature_C_avg*initial_CP*mesh_cat*TP_approx_avg, data = litter_lotic.nest)
+
+
+#summary(m1)
+#summary(m2)
+summary(m3)
+#summary(m4)
+#show temp depdencen and then say ok what outside of that variation due to temperature?
+```
+
+```{r breakdown models kdd}
+m1<-lm(K_model_degday ~ initial_N*TN_approx_avg*mesh_cat, data = litter_lotic.nest)
+m2<-lm(K_model_degday ~ initial_N*TP_approx_avg*mesh_cat, data = litter_lotic.nest)
+m3<-lm(K_model_degday ~ initial_P*TN_approx_avg*mesh_cat, data = litter_lotic.nest)
+m4<-lm(K_model_degday ~ initial_P*TP_approx_avg*mesh_cat, data = litter_lotic.nest)
+m5<-lm(K_model_degday ~ initial_CN*TN_approx_avg*mesh_cat, data = litter_lotic.nest)
+m6<-lm(K_model_degday ~ initial_CN*TP_approx_avg*mesh_cat, data = litter_lotic.nest)
+m7<-lm(K_model_degday ~ initial_CP*TN_approx_avg*mesh_cat, data = litter_lotic.nest)
+m8<-lm(K_model_degday ~ initial_CP*TP_approx_avg*mesh_cat, data = litter_lotic.nest)
+m9<-lm(K_model_degday ~ initial_NP*TN_approx_avg*mesh_cat, data = litter_lotic.nest)
+m10<-lm(K_model_degday ~ initial_NP*TP_approx_avg*mesh_cat, data = litter_lotic.nest)
+
+
+m.list <- list(m1,m2,m3,m4,m5,m6,m7,m8,m9,m10)
+
+m.r2<-map(m.list, glance)%>%
+  map(., ~pluck(., "r.squared"))
+
+#m7 and m8 best models, basically equivalent
+
+summary(m7)
+
+ggplot()+
+plot(resid(m7), as_factor(litter_lotic.nest$mesh_cat), na.action = na.omit)
+#plot(resid(m7), litter_lotic.nest$TN_approx_avg, na.action = na.omit)
+#plot(resid(m7), litter_lotic.nest$initial_CP)
+```
+
+Shift is - going from holistic process of breakdown to 
+
+Competing GAMs for N and P ontogenetic patterns
+Common to start with initial proportion - evolution from 1, a normalized starting point. 
+
+N categories as factors whose shape is allowed to vary
+N_prop_initial ~ Mass_per_remaining - breakdown rate alone best predictor (say, no it turns out that evolution of N content in litter follows different paths based on initial litter quantities of N) --- or not for P
+N_prop_initial ~ initial N + Mass_per_remaining + mesh cat  - by mass model
+N_prop_initial ~ initial N + Meas_day + Temperature - by time model
+
+Combining these ideas about breakdown rates and N availability says a lot about the persistence of these resources in systems and routing to different ecosystem pathways - N mass through time. 
+
+```{r plot N series}
+
+litter_lotic_postleach%>%
+  ggplot(aes(x = Mass_per_loss, y = N_prop_initial, color = initial_N_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))
+
+litter_lotic_postleach%>%
+  ggplot(aes(x = Mass_per_loss, y = N_per, color = initial_N_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))+
+  facet_wrap(.~initial_N_category)
+  
+
+```
+
+```{r N GAM}
+#N_null.gam <- gam(N_prop_initial ~ s(Mass_per_loss, k = 5)+s(series_index, bs = "re"), data = litter_lotic)
+#summary(N_null.gam)
+#draw(N_null.gam)
+#gam.check(N_null.gam)
+
+#this model is OK
+#N_Ncat.gam1 <- gam(N_prop_initial ~ s(Mass_per_loss, initial_N_category, bs = "fs", k = 30) + s(initial_N_category, bs = "re"), data = litter_lotic_postleach, family = Gamma(link = "log"))
+
+#N_Ncat.gam1 <- gam(N_prop_initial ~ te(Mass_per_loss, initial_N, k = 5), data = litter_lotic_postleach, family = Gamma(link = "log"))
+
+summary(N_Ncat.gam1)
+draw(N_Ncat.gam1)
+gam.check(N_Ncat.gam1)
+qq.gam(N_Ncat.gam1, rep = 500)
+#k.check(N_Ncat.gam)
+#anova(N_Ncat.gam, N_Ncat.gam2)
+```
+
+```{r plot N models}
+#predict_gam to exclude random effects
+#exclude_terms = "s(Mass_per_loss,initial_N_category)", values = list(series_index = NULL)
+pred_Ncat<-predict_gam(N_Ncat.gam1)
+
+ggplot()+
+ geom_smooth(data = pred_Ncat, aes(Mass_per_loss, y = exp(fit), color = initial_N_category), size = 2)+
+  geom_point(data = litter_lotic_postleach, aes(Mass_per_loss, N_prop_initial, color = initial_N_category), alpha = 0.25)+
+  xlim(c(0,100))+
+  ylim(c(0.0,4.0))+
+  facet_wrap(.~initial_N_category)+
+  NULL
 
 
 
 ```
 
-#N response plots
-## N plots against time-based variables
+Through the decomposition process the initial N really seems to be the major driver of timing a shift toward net mineralization - in fact though it's likely rarely observed in individual studies. 
 
-Note the use of DetNut_a here, which is a preliminarily pared-down dataframe for some of these analyses. Further 
-```{r N time plots}
-DetNut_a%>% #dataframe passed to some filtering functions 
-  #filter(Detritus_Type == "leaves")%>%
-  filter(initial_N_category != "NA")%>%
-  filter(First_Author != "Debusk")%>% #can be used to filter out any studies with unproofed data problems
-  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
-  #filter(Meas_Day >=2)%>% #can be used to, e.g., filter any 'leaching' days
-  ggplot(aes(x = Deg_days, y = N_per, color = initial_N_category))+
-  #geom_point()+
-  #scale_x_continuous(limits = c(0,2))+ #can set limits of x axis
-  #scale_y_continuous(limits = c(0,2))+
-  geom_smooth(method = "loess")+
-  #facet_wrap(.~Remain_Mass_Category)
-  NULL
+It's actually rather fascinating that we see such similarities across terrestrial and aquatic studies, even with the variation and uncertainty here. There are absolutely fundamental differences between  
 
-DetNut_a%>%
-  #filter(Detritus_Type == "leaves")%>%
-  filter(initial_N_category != "NA")%>%
-  filter(First_Author != "Debusk")%>%
-  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
-  #filter(Meas_Day >=2)%>%
-  ggplot(aes(x = Mass_per_remaining, y = N_prop_initial, color = initial_N_category))+
+Main differences with Parton - aquatic litter more retentive of N at later decomposition stages - part of this is methodological - late stages of breakdown in aquatic systems earlier in decomposition. 
+
+
+```{r plot CN series}
+
+litter_lotic_postleach%>%
+  ggplot(aes(x = Mass_per_loss, y = CN_molar))+
   geom_point()+
-  #scale_x_continuous(limits = c(0,2))+
-  #scale_y_continuous(limits = c(0,2))+
   geom_smooth(method = "loess")+
-  scale_x_reverse()+
-  #facet_wrap(.~Remain_Mass_Category)
-  NULL
+  xlim(c(0,100))
 
-DetNut_a%>%
-  #filter(Detritus_Type == "leaves")%>%
-  filter(initial_N_category != "NA")%>%
-  filter(First_Author != "Debusk")%>%
-  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
-  #filter(Meas_Day >=2)%>%
-  ggplot(aes(x = Mass_per_remaining, y = CN_molar, color = initial_N_category))+
+litter_lotic_postleach%>%
+  filter(!is.na(initial_CN_category))%>%
+  ggplot(aes(x = Mass_per_loss, y = CN_molar, color = initial_CN_category))+
   geom_point()+
-  #scale_x_continuous(limits = c(0,2))+
-  #scale_y_continuous(limits = c(0,2))+
   geom_smooth(method = "loess")+
-  #facet_wrap(.~Remain_Mass_Category)
-  NULL
-
-
+  xlim(c(0,100))
+  
 
 ```
 
-```{r N predictor relationship plots}
-DetNut_a%>%
-  #filter(Detritus_Type == "leaves")%>%
-  filter(initial_N_category != "NA")%>%
-  filter(First_Author != "Debusk")%>%
-  #filter(Remain_Mass_Category == "afdm" |Remain_Mass_Category == "dm")%>%
-  #filter(Meas_Day >=2)%>%
-  ggplot(aes(x = TN_approx, y = N_per, color = initial_N_category))+
-  geom_point()+
-  #scale_x_continuous(limits = c(0,2))+
-  #scale_y_continuous(limits = c(0,2))+
-  #geom_smooth(method = "loess")+
-  #facet_wrap(.~Remain_Mass_Category)
+```{r GAM C:N}
+CN_fs.gam <- gam(CN_molar ~ s(Mass_per_loss, initial_CN_category, bs = "fs"), data = litter_lotic_postleach, family = Gamma(link = "log"))
+
+summary(CN_fs.gam)
+draw(CN_fs.gam)
+gam.check(CN_fs.gam)
+qq.gam(CN_fs.gam, rep = 500)
+
+```
+
+```{r plot GAM}
+
+pred_CNcat<-predict_gam(CN_fs.gam)
+
+ggplot()+
+ geom_smooth(data = pred_CNcat, aes(Mass_per_loss, y = exp(fit), color = initial_CN_category), size = 2)+
+  geom_point(data = litter_lotic_postleach, aes(Mass_per_loss, CN_molar, color = initial_CN_category), alpha = 0.25)+
+  #xlim(c(0,100))+
+  #ylim(c(0.0,4.0))+
+  #facet_wrap(.~initial_CN_category)+
   NULL
 
 ```
 
-#P response plots
 
-#C:N response plots
-
-#C:P response plots
-
-#N:P response plots
