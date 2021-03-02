@@ -245,7 +245,7 @@ litter_lotic <- DetNut.ts%>%
 litter_lotic_postleach <- litter_lotic%>%
     filter(case_when(postleach_category == "preleach" ~ Meas_Day >=2,
                    postleach_category == "postleach" ~ Meas_Day >=0))%>%
-    filter(CN_molar>0 & !is.na(CN_molar))%>%
+    #filter(CN_molar>0 & !is.na(CN_molar))%>%
     mutate(initial_CN_category = case_when(initial_CN>100 ~ "high ",
                                 initial_CN>75 & initial_CN <= 100 ~ "med-high ",
                                 initial_CN>50 & initial_CN <= 75 ~ "med ",
@@ -349,6 +349,13 @@ litter_lotic_postleach%>%
   geom_smooth(method = "loess")+
   xlim(c(0,100))+
   facet_wrap(.~initial_N_category)
+
+litter_lotic_postleach%>%
+  ggplot(aes(x = Meas_Day, y = N_per*Mass_per_remaining, color = initial_N_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))+
+  facet_wrap(.~initial_N_category)
   
 
 ```
@@ -433,9 +440,11 @@ ggplot()+
   geom_point(data = litter_lotic_postleach, aes(Mass_per_loss, CN_molar, color = initial_CN_category), alpha = 0.25)+
   #xlim(c(0,100))+
   #ylim(c(0.0,4.0))+
-  #facet_wrap(.~initial_CN_category)+
+  facet_wrap(.~initial_CN_category)+
   NULL
 
 ```
 
+Do same stuff for P
+Look at NP ratios
 
