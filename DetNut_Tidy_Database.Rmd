@@ -1,0 +1,167 @@
+---
+title: "DetNutSynth_CleanFiles"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(assertr)
+library(janitor)
+library(mgcv)
+library(gratia)
+library(tidymv)
+
+```
+
+```{r Set working directory}
+#Use the test directory on the Desktop
+DetNut_Files<-list.files("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\Final Proofed Files", full.names = TRUE) #Obviously change this to where you need to
+head(DetNut_Files)
+
+```
+#Whole set ingest and carpentry
+```{r Read files and parse variables}
+
+#include incorrect but present names so they will parse the same as the correctly named versions of those variables -essential for name repair later - spits lots of warnings by design
+
+DetNut<-DetNut_Files%>%
+  map(~read_tsv(.x, col_types = cols(First_Author = "c",
+                                     Title = "c",
+                                     Year = "c",
+                                     Journal = "c",
+                                     DOI = "c",
+                                     System = "c",
+                                     Flow_Category = "c",
+                                     Decay_Method = "c",
+                                     Mesh_Size_Category = "c",
+                                     Setting = "c",
+                                     Manipulation = "c",
+                                     LULC_Category = "c",
+                                     Light_Category = "c",
+                                     Detritus_Type = "c",
+                                     Detritus_Condition = "c",
+                                     Detritus_Species = "c",
+                                     Remain_Mass_Category = "c",
+                                     Component_Mass_Category = "c",
+                                     Component_Ratio_type = "c",
+                                     Geog_Locale = "c",
+                                     Geog_locale = "c",
+                                     Lat_Long = "c",
+                                     Start_Date = "c",
+                                     LULC_Quantified = "c",
+                                     Inverts_AddInfo = "c",
+                                     Microbes_AddInfo = "c",
+                                     CNPFluxes_AddInfo = "c",
+                                     C_Method = "c",
+                                     C_method = 'c',
+                                     N_Method = "c",
+                                     N_method = "c",
+                                     P_Method = "c",
+                                     P_method = "c",
+                                     Ratio_Type = "c",
+                                     Ratio_type = "c",
+                                     Notes = "c",
+                                     .default = "n"))
+         )
+
+names(DetNut) <- DetNut_Files%>%
+  str_remove("/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesis Data txt Files/")
+
+
+```
+
+
+
+```{r repair names}
+#this map_if function can be used to repair names if they appear in a nested tibble
+DetNut2 <- DetNut%>%
+  map_if(~all("Mass_Per_Remaining" %in% colnames(.)), 
+         ~rename(.,Mass_per_remaining = Mass_Per_Remaining))%>% 
+  map_if(~all("C_Method" %in% colnames(.)), 
+         ~rename(.,C_method = C_Method))%>%
+  map_if(~all("N_Method" %in% colnames(.)), 
+         ~rename(.,N_method = N_Method))%>%
+  map_if(~all("P_Method" %in% colnames(.)), 
+         ~rename(.,P_method = P_Method))%>%
+  map_if(~all("Geog_locale" %in% colnames(.)), 
+         ~rename(.,Geog_Locale = Geog_locale))%>%
+  map_if(~all("Component_Ratio_type" %in% colnames(.)), 
+         ~rename(.,Ratio_Type = Component_Ratio_type))%>%
+   map_if(~all("Ratio_type" %in% colnames(.)), 
+         ~rename(.,Ratio_Type = Ratio_type))%>%
+   map_if(~all("Cond_us.cm" %in% colnames(.)), 
+         ~rename(.,Cond_uS.cm = Cond_us.cm))%>%
+    map_if(~all("Total_phenolics" %in% colnames(.)), 
+         ~rename(.,Total_Phenolics_per = Total_phenolics))%>%
+  map_df(as_tibble)%>%
+  remove_empty(which = "rows")
+```
+
+Manually checked that files have same number of columns
+
+```{r reconcile factor level names}
+
+DetNut3<-DetNut2%>%
+  mutate(Detritus_Type = fct_collapse(Detritus_Type, 
+                      leaves = c("leaf", "leaf_disk", "plant_leaves", "leaves"),
+                      culms = c("culm", "culms"),
+                      roots = c("roots", "plant_roots"),
+                      wood_veneer = c("veneer", "wood_veneer"),
+                      stems_and_leaves = c("stem_leaves", "stem_leaves", "leaf_stem", "leaves_stem", "stems_leaves"),
+                      petioles = c("petioles", "plant_petioles"),
+                      shoots = "plant_shoot",
+                      roots_and_leaves = "roots_leaves",
+                      stems_and_roots_and_leaves = "stem_roots_leaves"))%>%
+  mutate(Remain_Mass_Category = fct_recode(Remain_Mass_Category, afdm = "AFDM", dm = "DM"))%>%
+  mutate(Mesh_Size_Category = case_when(Mesh_Size_Category == "coarse" | Mesh_Size_Category == "fine" | Mesh_Size_Category == "open" ~ Mesh_Size_Category,
+                              Mesh_Size_Category == "SRP" | is.na(Mesh_Size_Category) ~ "NA",
+                              Mesh_Size_Category == 0 ~ "open",
+                              TRUE ~ str_remove_all(Mesh_Size_Category, " mm|mm|_mm| |_1|-")))%>%
+  mutate(System = fct_collapse(System,
+                               stream = c("stream", "Stream"),
+                               wetland = c("wetland", "Wetland","marsh"),
+                               lake = c("Lake", "lake")))%>%
+  mutate(Component_Mass_Category = fct_collapse(Component_Mass_Category,
+                                                dm = c("dm_postleach", "DM"),
+                                                afdm = c("afdm", "AFDM", "afdm_postleach"),
+                                                dm_afdm_mix = "dm_afdm"))%>%
+  mutate(Detritus_Condition = fct_collapse(Detritus_Condition,
+                                         senesced = c("scenesced","senescent")))%>%
+  mutate(Journal = str_replace_all(Journal,"_"," "),
+         Journal = str_remove_all(Journal, "\UFFFD"),
+         Journal = fct_collapse(Journal, 
+                                `Freshwater Science` = "FRESHWATER SCIENCE",
+                                `Aquatic Botany` = c("AQUATIC BOTANY","AquaticBotany"),
+                                `Biological Invasions` = "Biol Invasions",
+                                `Fundamental and Applied Limnology` = "Fundamental and applied Limnology",
+                                `Archiv fur Hydrobiologie` = c("Archiv fr Hydrobiologie", "Archiv Fr Hydrobiologie")))%>%
+  mutate(Decay_Method = fct_collapse(Decay_Method, 
+                                     beaker = c("Beaker", "beaker"),
+                                     litter_bag = c("litter_bag", "litter_ bag", "litter_bags", "leaf_pack")))%>%
+  mutate(LULC_Category = str_replace_all(LULC_Category, "_", " "))%>%
+  mutate(Light_Category = fct_collapse(Light_Category, 
+                                       shade = c("shade", "shaded"),
+                                       dark = c("Dark", "dark","closed"),
+                                       light = c("Light", "open", "PAR_only", "PAR_and_UVA", "PAR_UVA_UVB")))%>%
+  mutate(Setting = fct_collapse(Setting, 
+                                lab = c("lab", "laboratory"),
+                                field = c("field", "Field"),
+                                mesocosm = c("mesocosm", "outdoor_mesocosm"),
+                                microcosm = "microcosms"))%>%
+  mutate(Geog_Locale = str_replace_all(Geog_Locale,"_"," "),
+         Geog_Locale = str_remove_all(Geog_Locale, "\UFFFD"))%>%
+  mutate(Lat_Long = str_replace_all(Lat_Long, "_", ","))
+
+
+```
+
+
+{r write tidied database}
+#write current version of database file - currently goes to computer working directory
+DetNut3%>%
+  write_csv("DetNutSynth_Database_preliminary.csv")
+
+
+
+
