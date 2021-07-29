@@ -1,0 +1,160 @@
+---
+title: "DetNut_Data_Summary"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(magrittr)
+```
+
+```{r read datafile}
+det <- read_csv("DetNutSynth_Database_preliminary.csv")
+
+
+```
+
+
+```{r create new summary variables}
+det2 <- det%>%
+  group_by(First_Author, Title, Time_Series_ID)%>%
+  mutate(series_index = group_indices())%>%#creates a unique index for each time series
+  ungroup()%>%
+  group_by(series_index)%>% #functionally, used to confine any window functions like first() to a time series rather than the first observation of whole dataframe
+  mutate(initial_C = first(C_per),
+         initial_N = first(N_per),
+         initial_P = first(P_per),
+         initial_CN = first(CN_molar),
+         initial_CP = first(CP_molar),
+         initial_NP = first(NP_molar),
+         initial_Lignin = first(Lignin_per))%>%
+  #next normalizes CNP values to initial measurements for each time series and to initial masses as in Manzoni
+  mutate(C_prop_initial = C_per/first(C_per),
+         N_prop_initial = N_per/first(N_per),
+         P_prop_initial = P_per/first(P_per),
+         C_mass_norm = ((C_per/100)*Mass_per_remaining)/(first(C_per/100)*first(Mass_per_remaining)),
+         N_mass_norm = ((N_per/100)*Mass_per_remaining)/(first(N_per/100)*first(Mass_per_remaining)),
+         P_mass_norm = ((P_per/100)*Mass_per_remaining)/(first(P_per/100)*first(Mass_per_remaining)))%>%
+  #fill in any places where ratios could have been calculated, but weren't
+
+  #next approximates percent mass remaining (if not provided) at each measurement day from k value
+  mutate(Mass_per_remaining = case_when(is.na(Mass_per_remaining) & Remain_Mass_Category == "afdm" ~ exp(-k*Meas_Day)*100,
+                                        is.na(Mass_per_remaining) & Remain_Mass_Category == "dm" ~ exp(-k*Meas_Day)*100,
+                                        TRUE ~ Mass_per_remaining))%>%
+  #next develops an approximation of N and P availability - imperfect, but aggregates the N and P data together about as well as possible without assuming anything else
+  mutate(Water_DIN_ug.L = case_when(is.na(Water_DIN_ug.L) & is.na(Water_NH4_ug.L) ~ Water_NO3_ug.L,
+                                    is.na(Water_DIN_ug.L) ~ Water_NO3_ug.L + Water_NH4_ug.L,
+                                    TRUE ~ Water_DIN_ug.L),
+         TN_approx = case_when(is.na(Water_TN_ug.L) ~ Water_DIN_ug.L,
+                               TRUE ~ Water_TN_ug.L),
+         TP_approx = case_when(is.na(Water_TP_ug.L) ~ Water_SRP_ug.L,
+                               TRUE ~ Water_TP_ug.L))%>%
+  #next creates a Temperature, TN, and TP average when there are multiple values given - these NEEDS TO BE CHANGED INTO A TIME-WEIGHTED AVERAGE
+  mutate(Temperature_C_avg = case_when(n_distinct(Temperature_C) >1 ~ mean(Temperature_C), 
+                                       TRUE ~ Temperature_C),
+         TN_approx_avg = case_when(n_distinct(TN_approx) >1 ~ mean(TN_approx), 
+                                       TRUE ~ TN_approx),
+         TP_approx_avg = case_when(n_distinct(TP_approx) >1 ~ mean(TP_approx), 
+                                       TRUE ~ TP_approx))%>%
+  mutate(Deg_days = Temperature_C * (Meas_Day-first(Meas_Day)))%>% #degree days
+  #remove text from variable if not coarse fine or open
+
+  mutate(mesh_cat = case_when(Mesh_Size_Category == "coarse" | Mesh_Size_Category == "fine" | Mesh_Size_Category == "open" ~ Mesh_Size_Category,
+                              Mesh_Size_Category < 1 ~ "fine",
+                              Mesh_Size_Category >= 1 ~ "coarse"))%>%
+ 
+  mutate(Lotic_Lentic = case_when(System == "stream"|System == "Stream"|System == "Channel"|System == "river" ~ "Lotic",
+                                  System == "wetland"|System == "Wetland"|System == "wetlands"|System == "marsh"|System == "lake"|System == "Lake"|System == "pond"|System == "reservoir" ~ "Lentic",
+                                  TRUE ~ System),
+         Lotic_Lentic = as_factor(Lotic_Lentic))%>%
+
+  mutate(cum_TN = cumsum(TN_approx_avg)*Meas_Day,
+         cum_TP = cumsum(TP_approx_avg)*Meas_Day)%>%
+  mutate(series_index = as_factor(series_index),
+         Mass_per_loss = 100-(Mass_per_remaining),
+         mesh_cat = as_factor(mesh_cat),
+         Remain_Mass_Category = as_factor(Remain_Mass_Category))
+
+
+#Time-integrated conditions - already calculated degree days, but could do to approximate a cumulative N load, P load, etc.
+
+```
+
+
+```{r summarize data distributions for numeric variables}
+det_distros<-det2%>%
+  discard(~!is.numeric(.))%>% #keeps only numeric variables
+describe_distribution()%>%
+  slice(1:30)%>%
+  filter(Variable != "Year"&Variable != "Time_Series_ID")
+det_distros
+```
+
+
+
+```{r histogram contrinuous variables}
+#extract row names
+det_names <- det_distros%>%
+  pull(Variable)
+
+histo.f<-function(x){
+  ggplot(det2, aes(.data[[x]]))+
+    geom_histogram()
+}
+
+map(det_names, histo.f)
+
+```
+
+
+
+
+```{r aggregated summaries}
+DetNut.nest <- DetNut.ts%>%
+  group_by(First_Author, Title, Journal, series_index, Detritus_Type, Velocity_m.s, mesh_cat, Decay_Method, initial_N, initial_P, initial_CN, initial_CP, initial_NP, initial_Lignin,  System, Lotic_Lentic, Detritus_Species, TN_approx_avg, TP_approx_avg, Detritus_Condition, Temperature_C_avg)%>%
+  nest()%>%
+  mutate(Series_Measurements = map_dbl(data, nrow),
+         Detritus_Type = as_factor(Detritus_Type))%>%
+  filter(Series_Measurements > 1)
+ # mutate(Series_Length1 = attributes(data))
+  #make a k value with many models stuff
+
+  k_lm <- function(df) {
+  lm(log(Mass_per_remaining) ~ Meas_Day, data = df)
+  }
+
+  
+DetNut.nest<-DetNut.nest%>%
+  mutate(k_model = map(data, k_lm))%>%
+  mutate(k_model = map(k_model, broom::tidy))%>%
+  mutate(k_model = map(k_model, ~filter(., term == "Meas_Day")))%>%
+  mutate(k_model = map_dbl(k_model, ~pluck(., "estimate")*-1))%>%
+  mutate(K_model_degday = k_model/Temperature_C_avg)%>%
+  mutate(Series_Days = map_dbl(data, ~last(.$Meas_Day, order_by = .$Meas_Day)))%>%
+  mutate(Lignin_N = initial_Lignin/initial_N)
+
+
+DetNut.ts2 <- DetNut.nest%>%
+  unnest()
+
+```
+
+
+```{r}
+
+CNP_series_counts<-det2%>%
+  group_by(series_index)%>%
+  summarize(C_obs_Count = sum(!is.na(C_per)), #counts number of observations within each series
+            N_obs_Count = sum(!is.na(N_per)),
+            P_obs_Count = sum(!is.na(P_per)),
+            CN_obs_Count = sum(!is.na(CN_molar)),
+            CP_obs_Count = sum(!is.na(CP_molar)),
+            NP_obs_Count = sum(!is.na(NP_molar)))%>%
+  summarize(C_Series_Count = sum(C_obs_Count>1),
+            N_Series_Count = sum(N_obs_Count>1),
+            P_Series_Count = sum(P_obs_Count>1),
+            CN_Series_Count = sum(CN_obs_Count>1),
+            CP_Series_Count = sum(CP_obs_Count>1),
+            NP_Series_Count = sum(NP_obs_Count>1))
+```
