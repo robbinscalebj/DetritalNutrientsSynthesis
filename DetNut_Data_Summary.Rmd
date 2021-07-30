@@ -1,22 +1,25 @@
 ---
 title: "DetNut_Data_Summary"
-output: html_document
+output:
+  pdf_document: default
+  html_document: default
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(echo = FALSE, fig.width = 3, fig.height = 2)
 library(tidyverse)
 library(magrittr)
+library(datawizard)
 ```
 
-```{r read datafile}
+```{r read datafile, include = FALSE, message = FALSE, warning = FALSE}
 det <- read_csv("DetNutSynth_Database_preliminary.csv")
 
 
 ```
 
 
-```{r create new summary variables}
+```{r create new summary variables, include=FALSE}
 det2 <- det%>%
   group_by(First_Author, Title, Time_Series_ID)%>%
   mutate(series_index = group_indices())%>%#creates a unique index for each time series
@@ -93,7 +96,7 @@ det_distros
 
 
 
-```{r histogram contrinuous variables}
+```{r histogram contrinuous variables,message = FALSE, warning = FALSE}
 #extract row names
 det_names <- det_distros%>%
   pull(Variable)
@@ -110,51 +113,101 @@ map(det_names, histo.f)
 
 
 
+
 ```{r aggregated summaries}
-DetNut.nest <- DetNut.ts%>%
-  group_by(First_Author, Title, Journal, series_index, Detritus_Type, Velocity_m.s, mesh_cat, Decay_Method, initial_N, initial_P, initial_CN, initial_CP, initial_NP, initial_Lignin,  System, Lotic_Lentic, Detritus_Species, TN_approx_avg, TP_approx_avg, Detritus_Condition, Temperature_C_avg)%>%
+#this will create a nested dataframe (the data are included as a column within the larger dataframe) that can be used to look at characteristics of each time series, rather than the  data overall. This may have limited application, but can also be expanded.
+
+DetNut.nest <- det2%>%
+  group_by(First_Author, Title, Journal, series_index)%>%
   nest()%>%
+  mutate(System = map_chr(data, ~first(.$System)),
+         Lotic_Lentic = map_chr(data, ~first(.$Lotic_Lentic)),
+         Detritus_Condition = map_chr(data, ~first(.$Detritus_Condition)),
+         Detritus_Species = map_chr(data, ~first(.$Detritus_Species)),
+         Detritus_Type = map_chr(data, ~first(.$Detritus_Type)),
+         Decay_Method = map_chr(data, ~first(.$Decay_Method)),
+         initial_C = map_dbl(data, ~first(.$initial_C)),
+         initial_N = map_dbl(data, ~first(.$initial_N)),
+         initial_P = map_dbl(data, ~first(.$initial_P)),
+         initial_CN = map_dbl(data, ~first(.$initial_CN)),
+         initial_CP = map_dbl(data, ~first(.$initial_CP)),
+         initial_NP = map_dbl(data, ~first(.$initial_NP)),
+         initial_Lignin = map_dbl(data, ~first(.$initial_Lignin)))%>%
+  #count observations per series
   mutate(Series_Measurements = map_dbl(data, nrow),
-         Detritus_Type = as_factor(Detritus_Type))%>%
-  filter(Series_Measurements > 1)
- # mutate(Series_Length1 = attributes(data))
-  #make a k value with many models stuff
+         C_counts = map_dbl(data, ~sum(!is.na(.$C_per))),
+         N_counts = map_dbl(data, ~sum(!is.na(.$N_per))),
+         P_counts = map_dbl(data, ~sum(!is.na(.$P_per))),
+         CN_counts = map_dbl(data, ~sum(!is.na(.$CN_molar))),
+         CP_counts = map_dbl(data, ~sum(!is.na(.$CP_molar))),
+         NP_counts = map_dbl(data, ~sum(!is.na(.$NP_molar))))
 
-  k_lm <- function(df) {
-  lm(log(Mass_per_remaining) ~ Meas_Day, data = df)
-  }
-
-  
-DetNut.nest<-DetNut.nest%>%
-  mutate(k_model = map(data, k_lm))%>%
-  mutate(k_model = map(k_model, broom::tidy))%>%
-  mutate(k_model = map(k_model, ~filter(., term == "Meas_Day")))%>%
-  mutate(k_model = map_dbl(k_model, ~pluck(., "estimate")*-1))%>%
-  mutate(K_model_degday = k_model/Temperature_C_avg)%>%
-  mutate(Series_Days = map_dbl(data, ~last(.$Meas_Day, order_by = .$Meas_Day)))%>%
-  mutate(Lignin_N = initial_Lignin/initial_N)
-
-
-DetNut.ts2 <- DetNut.nest%>%
-  unnest()
 
 ```
+
+
 
 
 ```{r}
+DetNut_species<- det2%>%
+  ungroup()%>%
+  summarize(n_species = n_distinct(Detritus_Species))
 
-CNP_series_counts<-det2%>%
-  group_by(series_index)%>%
-  summarize(C_obs_Count = sum(!is.na(C_per)), #counts number of observations within each series
-            N_obs_Count = sum(!is.na(N_per)),
-            P_obs_Count = sum(!is.na(P_per)),
-            CN_obs_Count = sum(!is.na(CN_molar)),
-            CP_obs_Count = sum(!is.na(CP_molar)),
-            NP_obs_Count = sum(!is.na(NP_molar)))%>%
-  summarize(C_Series_Count = sum(C_obs_Count>1),
-            N_Series_Count = sum(N_obs_Count>1),
-            P_Series_Count = sum(P_obs_Count>1),
-            CN_Series_Count = sum(CN_obs_Count>1),
-            CP_Series_Count = sum(CP_obs_Count>1),
-            NP_Series_Count = sum(NP_obs_Count>1))
+DetNut_types<- det2%>%
+  ungroup()%>%
+  count(Detritus_Type)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_systems<- det2%>%
+  ungroup()%>%
+  count(System)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_lotlentype<- det2%>%
+   ungroup()%>%
+  filter(Lotic_Lentic == "Lotic"|Lotic_Lentic == "Lentic")%>%
+  count(Lotic_Lentic, Detritus_Type)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_lotlen<- det2%>%
+  ungroup()%>%
+  filter(Lotic_Lentic == "Lotic"|Lotic_Lentic == "Lentic")%>%
+  count(Lotic_Lentic)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+
+DetNut_systemstypes<- det2%>%
+  ungroup()%>%
+  count(System, Detritus_Type)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+ 
+DetNut_systemstypescond<- det2%>%
+  ungroup()%>%
+  count(System, Detritus_Type, Detritus_Condition)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+ 
+DetNut_typescond<- det2%>%
+  ungroup()%>%
+  count(Detritus_Type, Detritus_Condition)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_species
+DetNut_types
+DetNut_systems
+DetNut_lotlentype
+DetNut_lotlen
+DetNut_systemstypes
+DetNut_systemstypescond
+DetNut_typescond
+
 ```
+
+
