@@ -95,7 +95,8 @@ DetNut2 <- DetNut%>%
     map_if(~all("Total_phenolics" %in% colnames(.)), 
          ~rename(.,Total_Phenolics_per = Total_phenolics))%>%
   map_df(as_tibble)%>%
-  remove_empty(which = "rows")
+  remove_empty(which = "rows")%>%
+  rename(Publication_Year = Year)
 ```
 
 Manually checked that files have same number of columns
