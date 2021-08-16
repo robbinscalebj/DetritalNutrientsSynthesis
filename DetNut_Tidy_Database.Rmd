@@ -129,6 +129,7 @@ DetNut3<-DetNut2%>%
                                                 dm_afdm_mix = "dm_afdm"))%>%
   mutate(Detritus_Condition = fct_collapse(Detritus_Condition,
                                          senesced = c("scenesced","senescent")))%>%
+  mutate(Detritus_Species = str_replace_all(Detritus_Species,"_", " "))%>%
   mutate(Journal = str_replace_all(Journal,"_"," "),
          Journal = str_remove_all(Journal, "\UFFFD"),
          Journal = fct_collapse(Journal, 

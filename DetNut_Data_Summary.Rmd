@@ -89,10 +89,12 @@ det2 <- det%>%
 det_distros<-det2%>%
   discard(~!is.numeric(.))%>% #keeps only numeric variables
 describe_distribution()%>%
-  slice(1:30)%>%
-  filter(Variable != "Year"&Variable != "Time_Series_ID")
+  slice(1:31)%>% #keeps the main recorded vars/excludes lots of the 'created' or summarized variables from earlier chunk
+  filter(Variable != "Publication_Year"&Variable != "Time_Series_ID")
 det_distros
 ```
+Notes:
+-Some very high nutrient values (e.g., Gamage et al nitrogen) can be recorded in beaker studies where water isn't replaced
 
 
 
@@ -109,7 +111,6 @@ histo.f<-function(x){
 map(det_names, histo.f)
 
 ```
-
 
 
 
@@ -144,7 +145,6 @@ DetNut.nest <- det2%>%
 
 
 ```
-
 
 
 
@@ -199,6 +199,12 @@ DetNut_typescond<- det2%>%
   mutate(proportion = n/sum(n))%>%
   arrange(desc(proportion))
 
+DetNut_taxa<- det2%>%
+  ungroup()%>%
+  count(Detritus_Species)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
 DetNut_species
 DetNut_types
 DetNut_systems
@@ -209,5 +215,8 @@ DetNut_systemstypescond
 DetNut_typescond
 
 ```
+
+
+
 
 
