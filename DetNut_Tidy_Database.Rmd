@@ -8,9 +8,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(assertr)
 library(janitor)
-library(mgcv)
-library(gratia)
-library(tidymv)
+
 
 ```
 
@@ -96,7 +94,13 @@ DetNut2 <- DetNut%>%
          ~rename(.,Total_Phenolics_per = Total_phenolics))%>%
   map_df(as_tibble)%>%
   remove_empty(which = "rows")%>%
-  rename(Publication_Year = Year)
+  rename(Publication_Title = Title, 
+         Publication_Year = Year, 
+         CN_ratio = CN_molar,
+         CP_ratio = CP_molar,
+         NP_ratio = NP_molar,
+         CNP_Ratio_Type = Ratio_Type)
+  
 ```
 
 Manually checked that files have same number of columns
@@ -155,15 +159,17 @@ DetNut3<-DetNut2%>%
          Geog_Locale = str_remove_all(Geog_Locale, "\UFFFD"))%>%
   mutate(Lat_Long = str_replace_all(Lat_Long, "_", ","))%>%
   #fill in any ratios that could have been calculated, but are not there
-  mutate(CN_molar = case_when(is.na(CN_molar) ~ ((C_per/N_per)*(14/12)),
-                              TRUE ~ CN_molar),
-         CP_molar = case_when(is.na(CP_molar) ~ ((C_per/P_per)*(31/12)),
-                              TRUE ~ CP_molar),
-         NP_molar = case_when(is.na(NP_molar) ~ ((N_per/P_per)*(31/14)),
-                              TRUE ~ NP_molar))
+  mutate(CN_ratio = case_when(is.na(CN_ratio) ~ ((C_per/N_per)*(14/12)),
+                              TRUE ~ CN_ratio),
+         CP_ratio = case_when(is.na(CP_ratio) ~ ((C_per/P_per)*(31/12)),
+                              TRUE ~ CP_ratio),
+         NP_ratio = case_when(is.na(NP_ratio) ~ ((N_per/P_per)*(31/14)),
+                              TRUE ~ NP_ratio))
 
 
 ```
+
+
 
 For metadata, we can use fct_count() on every limited (some variables are descriptive, not actually categorical) categorical variable to summarize/list the variable levels used in the database.
 

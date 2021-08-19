@@ -13,7 +13,9 @@ library(datawizard)
 ```
 
 ```{r read datafile, include = FALSE, message = FALSE, warning = FALSE}
-det <- read_csv("DetNutSynth_Database_preliminary.csv")
+
+
+det <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database_preliminary.csv")
 
 
 ```
@@ -21,16 +23,16 @@ det <- read_csv("DetNutSynth_Database_preliminary.csv")
 
 ```{r create new summary variables, include=FALSE}
 det2 <- det%>%
-  group_by(First_Author, Title, Time_Series_ID)%>%
+  group_by(First_Author, Publication_Title, Time_Series_ID)%>%
   mutate(series_index = group_indices())%>%#creates a unique index for each time series
   ungroup()%>%
   group_by(series_index)%>% #functionally, used to confine any window functions like first() to a time series rather than the first observation of whole dataframe
   mutate(initial_C = first(C_per),
          initial_N = first(N_per),
          initial_P = first(P_per),
-         initial_CN = first(CN_molar),
-         initial_CP = first(CP_molar),
-         initial_NP = first(NP_molar),
+         initial_CN = first(CN_ratio),
+         initial_CP = first(CP_ratio),
+         initial_NP = first(NP_ratio),
          initial_Lignin = first(Lignin_per))%>%
   #next normalizes CNP values to initial measurements for each time series and to initial masses as in Manzoni
   mutate(C_prop_initial = C_per/first(C_per),
@@ -112,6 +114,19 @@ map(det_names, histo.f)
 
 ```
 
+```{r summarize  character variables}
+det_chars<-det2%>%
+  discard(~is.numeric(.))%>% #excludes numeric variables
+  #then this should use a tidy version of unique to look at the unique levels for many of the variables that are not descriptive, which can be filtered out
+ map(fct_count)
+  
+det_chars
+```
+
+```{r}
+det.x <- det2%>%filter(Initial_Mass_g>400)
+
+```
 
 
 
