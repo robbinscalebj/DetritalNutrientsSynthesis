@@ -144,7 +144,8 @@ DetNut3<-DetNut2%>%
                                 `Archiv fur Hydrobiologie` = c("Archiv fr Hydrobiologie", "Archiv Fr Hydrobiologie")))%>%
   mutate(Decay_Method = fct_collapse(Decay_Method, 
                                      beaker = c("Beaker", "beaker"),
-                                     litter_bag = c("litter_bag", "litter_ bag", "litter_bags", "leaf_pack")))%>%
+                                     litter_bag = c("litter_bag", "litter_ bag", "litter_bags", "leaf_pack"), 
+                                     string = c("nylon_string", "string")))%>%
   mutate(LULC_Category = str_replace_all(LULC_Category, "_", " "))%>%
   mutate(Light_Category = fct_collapse(Light_Category, 
                                        shade = c("shade", "shaded"),
