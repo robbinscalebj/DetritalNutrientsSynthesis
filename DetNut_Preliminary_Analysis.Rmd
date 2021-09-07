@@ -89,6 +89,14 @@ det2 <- det%>%
 
 ```
 
+```{r trim data}
+det3<-det2%>%
+  filter(Mass_per_remaining<=100)%>%
+  filter(initial_N <6)%>%
+  mutate(initial_N = as_factor(initial_N))
+
+```
+
 #GAM
 
 Central hypothesis here is: Detrital nutrient mass is non-linearly driven by decomposition stage and initial detrital nutrient content
@@ -96,7 +104,7 @@ Alt hypotheses: Linear relationship and/or no significant variation explained by
 
 ```{r GAM initial N}
 
-N.gam <- gam(data = det2, N_mass_norm ~ s(Mass_per_loss) + s(initial_N), method = "REML")
+N.gam <- gam(data = det3, N_mass_norm ~ s(Mass_per_loss) + s(initial_N, bs = "fs") + s(series_index, bs = "re"), method = "REML")
 summary(N.gam)
 plot(N.gam)
 
