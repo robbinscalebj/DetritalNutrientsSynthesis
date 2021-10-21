@@ -91,12 +91,7 @@ DetNut.ts <- DetNut2%>%
          initial_CP = first(CP_molar),
          initial_NP = first(NP_molar),
          initial_Lignin = first(Lignin_per))%>%
-  #next bit creates fairly even distribution of initial N categories
-  mutate(initial_N_category = case_when(initial_N>2.5 ~ "high >2.5",
-                                initial_N>1.5 & initial_N <= 2.5 ~ "med-high 1.5 -2.5",
-                                initial_N>1.1 & initial_N <= 1.5 ~ "med 1.1-1.5",
-                                initial_N>0.75 & initial_N <= 1.1 ~ "low-med 0.75-1.1",
-                              initial_N <= 0.75~ "Low <0.75"))%>%
+  mutate(k = abs(k))%>%
   #next normalizes CNP values to initial measurements for each time series (don't know if useful for stoich but did it anyway)
   mutate(C_prop_initial = C_per/first(C_per),
          N_prop_initial = N_per/first(N_per),
@@ -106,6 +101,8 @@ DetNut.ts <- DetNut2%>%
          NP_prop_initial = CN_molar/first(NP_molar))%>%
   mutate(Detritus_Type = case_when(Detritus_Type == "leaf" |Detritus_Type == "leaf_disk" |Detritus_Type == "plant_leaves" |Detritus_Type == "leave_disks" |Detritus_Type == "Leaves" ~ "leaves",
                                    TRUE ~ Detritus_Type))%>%
+  mutate(NP_molar = case_when(is.na(NP_molar) ~ ((N_per/P_per)*(32/14)),
+                              TRUE ~ NP_molar))%>%
   #next approximates percent mass remaining (if not provided) at each measurement day from k value
   mutate(Mass_per_remaining = case_when(is.na(Mass_per_remaining) & Remain_Mass_Category == "afdm" ~ exp(-k*Meas_Day)*100,
                                         is.na(Mass_per_remaining) & Remain_Mass_Category == "dm" ~ exp(-k*Meas_Day)*100,
@@ -137,7 +134,13 @@ DetNut.ts <- DetNut2%>%
   filter(Mass_per_remaining > 0)%>%
   mutate(Lotic_Lentic = case_when(System == "stream"|System == "Stream"|System == "Channel"|System == "river" ~ "Lotic",
                                   System == "wetland"|System == "Wetland"|System == "wetlands"|System == "lake"|System == "Lake"|System == "pond"|System == "reservoir" ~ "Lentic",
-                                  TRUE ~ System))
+                                  TRUE ~ System))%>%
+  mutate(Component_Mass_Category = case_when(Component_Mass_Category == "DM_AFDM"|Component_Mass_Category == "DM_postleach"|Component_Mass_Category == "DM" ~ "dm",
+                                             Component_Mass_Category == "AFDM" |Component_Mass_Category == "afdm_postleach" ~ "afdm", 
+                                             TRUE ~ "NA"),
+         Component_Mass_Category = as_factor(Component_Mass_Category))%>%
+  mutate(cum_TN = cumsum(TN_approx_avg)*Meas_Day,
+         cum_TP = cumsum(TP_approx_avg)*Meas_Day)
 
 #must use summarize to create missing k values from Mass_per_remaining
 
@@ -160,7 +163,7 @@ unique(DetNut.ts$mesh_cat)
 ```{r}
 
 DetNut.nest <- DetNut.ts%>%
-  group_by(First_Author, Title, Journal, series_index, Detritus_Type, Velocity_m.s, mesh_cat, Decay_Method, initial_N, initial_P, initial_CN, initial_CP, initial_NP, initial_Lignin, initial_N_category, System, Lotic_Lentic, Detritus_Species, TN_approx_avg, TP_approx_avg, Detritus_Condition, Temperature_C_avg)%>%
+  group_by(First_Author, Title, Journal, series_index, Detritus_Type, Velocity_m.s, mesh_cat, Decay_Method, initial_N, initial_P, initial_CN, initial_CP, initial_NP, initial_Lignin,  System, Lotic_Lentic, Detritus_Species, TN_approx_avg, TP_approx_avg, Detritus_Condition, Temperature_C_avg)%>%
   nest()%>%
   mutate(Series_Measurements = map_dbl(data, nrow),
          Detritus_Type = as_factor(Detritus_Type))%>%
@@ -210,11 +213,7 @@ DetNut_systemstypescond<- DetNut.nest%>%
   count(System, Detritus_Type, Detritus_Condition)%>%
   mutate(proportion = n/sum(n))
 
-DetNut_ncat<- DetNut.nest%>%
-  ungroup()%>%
-  filter(!is.na(initial_N))%>%
-  count(initial_N_category)%>%
-  mutate(proportion = n/sum(n))
+
 
 DetNut.nest%>%
   ggplot(aes(x = Series_Days))+
@@ -235,23 +234,17 @@ litter_lotic <- DetNut.ts%>%
   filter(Series_Measurements > 1)%>%
   filter(Mass_per_remaining > 15)%>%
   mutate(postleach_category = case_when(Remain_Mass_Category == "afdm" | Remain_Mass_Category == "dm" ~ "preleach",
-                                        Remain_Mass_Category == "afdm_postleach" ~ "postleach"))%>%
+                                        Remain_Mass_Category == "afdm_postleach" ~ "postleach",
+                                        TRUE ~ "preleach"))%>%
   mutate(series_index = as_factor(series_index),
          Mass_per_loss = 100-(Mass_per_remaining),
-         initial_N_category = as_factor(initial_N_category),
          mesh_cat = as_factor(mesh_cat),
          Remain_Mass_Category = as_factor(Remain_Mass_Category))
 
 litter_lotic_postleach <- litter_lotic%>%
     filter(case_when(postleach_category == "preleach" ~ Meas_Day >=2,
-                   postleach_category == "postleach" ~ Meas_Day >=0))%>%
-    #filter(CN_molar>0 & !is.na(CN_molar))%>%
-    mutate(initial_CN_category = case_when(initial_CN>100 ~ "high ",
-                                initial_CN>75 & initial_CN <= 100 ~ "med-high ",
-                                initial_CN>50 & initial_CN <= 75 ~ "med ",
-                                initial_CN>25 & initial_CN <= 50 ~ "low-med ",
-                              initial_CN <= 25~ "Low "),
-           initial_CN_category = as_factor(initial_CN_category))
+                   postleach_category == "postleach" ~ Meas_Day >=0,
+                   TRUE ~ Meas_Day >=2))
 
 #litter_lotic.nest for analysis of aggregated variables with k and also description of time series
 litter_lotic.nest <- DetNut.nest%>%
@@ -323,51 +316,134 @@ plot(resid(m7), as_factor(litter_lotic.nest$mesh_cat), na.action = na.omit)
 #plot(resid(m7), litter_lotic.nest$initial_CP)
 ```
 
-Shift is - going from holistic process of breakdown to 
+#N analysis
+```{r pare dataset}
+#create a dataset suitable for analyzing N, C:N
+#create another dataset suitable for analyzing leaching of N and C:N
 
-Competing GAMs for N and P ontogenetic patterns
-Common to start with initial proportion - evolution from 1, a normalized starting point. 
 
-N categories as factors whose shape is allowed to vary
-N_prop_initial ~ Mass_per_remaining - breakdown rate alone best predictor (say, no it turns out that evolution of N content in litter follows different paths based on initial litter quantities of N) --- or not for P
-N_prop_initial ~ initial N + Mass_per_remaining + mesh cat  - by mass model
-N_prop_initial ~ initial N + Meas_day + Temperature - by time model
+N_analysis <- litter_lotic_postleach%>%
+  #filter(CN_molar>0 & !is.na(CN_molar))%>%
+  ungroup()%>%
+  mutate(initial_N_category = case_when(initial_N>2.5 ~ "High (>2.5)",
+                                        initial_N>1.5 & initial_N <= 2.5 ~ "Med-High (1.5 -2.5)",
+                                        initial_N>1.1 & initial_N <= 1.5 ~ "Med (1.1-1.5)",
+                                        initial_N>0.75 & initial_N <= 1.1 ~ "Low-Med (0.75-1.1)",
+                                        initial_N <= 0.75~ "Low (<0.75)"),
+         initial_N_category = as_factor(initial_N_category),
+         initial_N_category = fct_relevel(initial_N_category, "Low (<0.75)", "Low-Med (0.75-1.1)","Med (1.1-1.5)","Med-High (1.5 -2.5)", "High (>2.5)"))%>%
+  mutate(initial_CN_category = case_when(initial_CN>100 ~ "High (>100)",
+                                         initial_CN>75 & initial_CN <= 100 ~ "Med-High (75-100)",
+                                         initial_CN>50 & initial_CN <= 75 ~ "Med (50-75)",
+                                         initial_CN>25 & initial_CN <= 50 ~ "Low-Med (25-50)",
+                                         initial_CN <= 25~ "Low (<25)"),
+         initial_CN_category = as_factor(initial_CN_category),
+         initial_CN_category = fct_relevel(initial_CN_category, "Low (<25)", "Low-Med (25-50)","Med (50-75)","Med-High (75-100)", "High (>100)"))
 
-Combining these ideas about breakdown rates and N availability says a lot about the persistence of these resources in systems and routing to different ecosystem pathways - N mass through time. 
+  
+  
+N_leached <- litter_lotic_postleach%>% 
+  filter(postleach_category == "preleach")%>%
+  filter(Meas_Day <= 7)
+
+```
+
 
 ```{r plot N series}
 
-litter_lotic_postleach%>%
+N_analysis%>%
   ggplot(aes(x = Mass_per_loss, y = N_prop_initial, color = initial_N_category))+
   geom_point()+
   geom_smooth(method = "loess")+
   xlim(c(0,100))
 
-litter_lotic_postleach%>%
+N_analysis%>%
   ggplot(aes(x = Mass_per_loss, y = N_per, color = initial_N_category))+
   geom_point()+
   geom_smooth(method = "loess")+
   xlim(c(0,100))+
   facet_wrap(.~initial_N_category)
 
-litter_lotic_postleach%>%
-  ggplot(aes(x = Meas_Day, y = N_per*Mass_per_remaining, color = initial_N_category))+
-  geom_point()+
-  geom_smooth(method = "loess")+
-  xlim(c(0,100))+
-  facet_wrap(.~initial_N_category)
+NMass.p <- N_analysis%>%
+  filter(!is.na(initial_N_category))%>%
+  ggplot(aes(x = Mass_per_loss/100, y = N_per*(Mass_per_remaining/100), color = initial_N_category))+
+  geom_point(alpha = 0.65)+
+  geom_smooth(method = "lm")+
+ # xlim(c(0,100))+
+  facet_wrap(.~initial_N_category)+
+  geom_abline(slope = -1, intercept = 1)+
+  geom_abline(slope = -1, intercept = 2)+
+    xlab("Normalized Mass Loss")+
+  ylab("Normalized N Mass")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  scale_color_manual(aesthetics = "color", values = cbbPalette)+
+  guides(color=guide_legend( title="Initial %N Category"))
+
+  NMass.p
   
+ggsave(filename = "Nmass_p.jpeg", plot=NMass.p, width = 7, height = 5)
+
+```
+```{r N percent controls}
+N_analysis2<- N_analysis%>%
+  #filter(Temperature_C_avg <20 & Temperature_C_avg>5)%>%
+  #filter(Deg_days<1000)%>%
+  filter(TN_approx_avg<2000)
+  #mutate(Component_Mass_Category = as_factor(Component_Mass_Category))
+
+N_Nper.gam1 <- gam(N_prop_initial ~  s(Meas_Day) + s(TN_approx_avg) + s(Temperature_C_avg), data = N_analysis2, family = Gamma(link = "log"))
+
+
+
+summary(N_Nper.gam1)
+draw(N_Nper.gam1)
+gam.check(N_Nper.gam1)
+qq.gam(N_Nper.gam1, rep = 500)
+
+
+
+```
+```{r plot N controls GAM}
+pred_Nper<-predict_gam(N_Nper.gam1)
+
+
+cbbPalette <- c("#56B4E9",  "#E69F00", "#CC79A7", "#0072B2",  "#D55E00", "#000000")
+
+ggplot()+
+ geom_smooth(data = pred_Nper, aes(Mass_per_loss, y = exp(fit), color = Remain_Mass_Category), size = 2)+
+  geom_point(data = N_analysis2, aes(Mass_per_loss, N_prop_initial, color = Remain_Mass_Category), alpha = 0.55)+
+  xlim(c(0,85))+
+  ylim(c(0.0,4.0))+
+  #facet_wrap(.~initial_N_category)+
+  xlab("Mass loss (%)")+
+  ylab("Proportion of Initial N")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  #scale_color_manual(aesthetics = "color", values = cbbPalette)+
+ # guides(color=guide_legend( title="Initial %N Category"))+
+  NULL
 
 ```
 
-```{r N GAM}
+```{r N categories GAM}
 #N_null.gam <- gam(N_prop_initial ~ s(Mass_per_loss, k = 5)+s(series_index, bs = "re"), data = litter_lotic)
 #summary(N_null.gam)
 #draw(N_null.gam)
 #gam.check(N_null.gam)
 
 #this model is OK
-#N_Ncat.gam1 <- gam(N_prop_initial ~ s(Mass_per_loss, initial_N_category, bs = "fs", k = 30) + s(initial_N_category, bs = "re"), data = litter_lotic_postleach, family = Gamma(link = "log"))
+N_Ncat.gam1 <- gam(N_prop_initial ~ s(Mass_per_loss, initial_N_category, bs = "fs", k = 30), data = N_analysis, family = Gamma(link = "log"))
 
 #N_Ncat.gam1 <- gam(N_prop_initial ~ te(Mass_per_loss, initial_N, k = 5), data = litter_lotic_postleach, family = Gamma(link = "log"))
 
@@ -382,19 +458,34 @@ qq.gam(N_Ncat.gam1, rep = 500)
 ```{r plot N models}
 #predict_gam to exclude random effects
 #exclude_terms = "s(Mass_per_loss,initial_N_category)", values = list(series_index = NULL)
-pred_Ncat<-predict_gam(N_Ncat.gam1)
+pred_Ncat<-predict_gam(N_Ncat.gam1)%>%
+  mutate(initial_N_category = fct_relevel(initial_N_category, "Low (<0.75)", "Low-Med (0.75-1.1)","Med (1.1-1.5)","Med-High (1.5 -2.5)", "High (>2.5)"))
 
-ggplot()+
+
+cbbPalette <- c("#56B4E9",  "#E69F00", "#CC79A7", "#0072B2",  "#D55E00")
+
+n_p<-ggplot()+
  geom_smooth(data = pred_Ncat, aes(Mass_per_loss, y = exp(fit), color = initial_N_category), size = 2)+
-  geom_point(data = litter_lotic_postleach, aes(Mass_per_loss, N_prop_initial, color = initial_N_category), alpha = 0.25)+
-  xlim(c(0,100))+
+  geom_point(data = N_analysis, aes(Mass_per_loss, N_prop_initial, color = initial_N_category), alpha = 0.55)+
+  xlim(c(0,85))+
   ylim(c(0.0,4.0))+
-  facet_wrap(.~initial_N_category)+
+  #facet_wrap(.~initial_N_category)+
+  xlab("Mass loss (%)")+
+  ylab("Proportion of Initial N")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  scale_color_manual(aesthetics = "color", values = cbbPalette, breaks = levels(N_analysis$initial_N_category))+
+  guides(color=guide_legend( title="Initial %N Category"))+
   NULL
-
-
-
+  
+ggsave(filename = "n_p.jpeg", plot=n_p, width = 7, height = 5)
 ```
+
 
 Through the decomposition process the initial N really seems to be the major driver of timing a shift toward net mineralization - in fact though it's likely rarely observed in individual studies. 
 
@@ -403,26 +494,35 @@ It's actually rather fascinating that we see such similarities across terrestria
 Main differences with Parton - aquatic litter more retentive of N at later decomposition stages - part of this is methodological - late stages of breakdown in aquatic systems earlier in decomposition. 
 
 
+
+#CN analysis
 ```{r plot CN series}
 
-litter_lotic_postleach%>%
+N_analysis%>%
   ggplot(aes(x = Mass_per_loss, y = CN_molar))+
   geom_point()+
   geom_smooth(method = "loess")+
   xlim(c(0,100))
 
-litter_lotic_postleach%>%
+N_analysis%>%
   filter(!is.na(initial_CN_category))%>%
   ggplot(aes(x = Mass_per_loss, y = CN_molar, color = initial_CN_category))+
   geom_point()+
   geom_smooth(method = "loess")+
   xlim(c(0,100))
-  
 
+N_analysis%>%
+  #filter(!is.na(initial_CN_category))%>%
+  ggplot(aes(x = Mass_per_loss, y = C_per))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  #xlim(c(0,100))+
+  NULL
 ```
 
+
 ```{r GAM C:N}
-CN_fs.gam <- gam(CN_molar ~ s(Mass_per_loss, initial_CN_category, bs = "fs"), data = litter_lotic_postleach, family = Gamma(link = "log"))
+CN_fs.gam <- gam(CN_molar ~ s(Mass_per_loss, initial_CN_category, bs = "fs", m=2), data = N_analysis, family = Gamma(link = "log"))
 
 summary(CN_fs.gam)
 draw(CN_fs.gam)
@@ -431,20 +531,346 @@ qq.gam(CN_fs.gam, rep = 500)
 
 ```
 
-```{r plot GAM}
+```{r plot CN GAM}
 
 pred_CNcat<-predict_gam(CN_fs.gam)
 
-ggplot()+
+cn_p<-ggplot()+
  geom_smooth(data = pred_CNcat, aes(Mass_per_loss, y = exp(fit), color = initial_CN_category), size = 2)+
-  geom_point(data = litter_lotic_postleach, aes(Mass_per_loss, CN_molar, color = initial_CN_category), alpha = 0.25)+
-  #xlim(c(0,100))+
+  geom_point(data = N_analysis, aes(Mass_per_loss, CN_molar, color = initial_CN_category), alpha = 0.25)+
+  xlim(c(0,85))+
   #ylim(c(0.0,4.0))+
-  facet_wrap(.~initial_CN_category)+
+ # facet_wrap(.~initial_CN_category)+
+  xlab("Mass loss (%)")+
+  ylab("C:N")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  scale_color_manual(aesthetics = "color", values = cbbPalette, breaks = levels(N_analysis$initial_CN_category))+
+  guides(color=guide_legend(title="Initial C:N Category"))+
+  NULL
+  
+ggsave(filename = "cn_p.jpeg", plot=cn_p, width = 7, height = 5)
+  
+
+```
+
+Looking at leaching directly could have some pretty serious biases - a lot of studies don't measure at day 2 or 3 or 4, and any time after that, you start worrying about a serious microbial signal making its way in. 
+#leaching N
+```{r}
+N_leached%>%
+  ggplot(aes(x = Meas_Day, y = N_prop_initial))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,25))
+```
+
+
+#leaching CN
+```{r}
+N_leached%>%
+  ggplot(aes(x = Meas_Day, y = initial_CN))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,25))
+```
+
+#P analysis
+```{r pare dataset}
+P_analysis <- litter_lotic_postleach%>%
+  #filter(initial_P <0.2)%>%
+  ungroup()%>%
+  mutate(initial_P_category = case_when(initial_P>0.13 ~ "High (>0.13)",
+                                        initial_P>0.1 & initial_P <= 0.13 ~ "Med-High (0.10-0.13)",
+                                        initial_P>0.06 & initial_P <= 0.1 ~ "Med (0.06-0.10)",
+                                        initial_P>0.035 & initial_P <= 0.06 ~ "Low-Med (0.035-0.06)",
+                                        initial_P <= 0.035~ "Low (<0.035)"))%>%
+  mutate(initial_P_category = as_factor(initial_P_category),
+         initial_P_category = fct_relevel(initial_P_category, "Low (<0.035)", "Low-Med (0.035-0.06)","Med (0.06-0.10)","Med-High (0.10-0.13)", "High (>0.13)"))%>%
+  mutate(initial_CP_category = case_when(initial_CP>4200 ~ "High (>4200)",
+                                         initial_CP>2400 & initial_CP <= 4200 ~ "Med-High (2400-4200)",
+                                         initial_CP>1700 & initial_CP <= 2400 ~ "Med (1700-2400)",
+                                         initial_CP>1250 & initial_CP <= 1700 ~ "Low-Med (1250-1700)",
+                                         initial_CP <= 1250~ "Low (<1250)"),
+         initial_CP_category = as_factor(initial_CP_category),
+         initial_CP_category = fct_relevel(initial_CP_category, "Low (<1250)", "Low-Med (1250-1700)","Med (1700-2400)","Med-High (2400-4200)", "High (>4200)"))%>%
+  mutate(postleach_CP_initial = CP_molar/first(CP_molar))%>%
+  filter(First_Author != "Perez") #potentially problematic CP values late in decomp
+  
+  
+  
+  
+  
+  P_leached <- litter_lotic_postleach%>% 
+    filter(postleach_category == "preleach")%>%
+    filter(Meas_Day <= 6)
+
+```
+
+```{r P plots}
+P_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = P_prop_initial, color = initial_P_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))
+
+P_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = P_per, color = initial_P_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))
+
+P_analysis%>%
+  ggplot(aes(x = Meas_Day, y = P_per*Mass_per_remaining, color = initial_P_category))+
+  geom_point()+
+  geom_smooth(method = "gam")+
+  xlim(c(0,100))
+
+```
+
+```{r GAM P}
+P_fs.gam <- gam(P_prop_initial ~ s(Mass_per_loss, initial_P_category, bs = "fs"), data = P_analysis, family = Gamma(link = "log"))
+
+summary(P_fs.gam)
+draw(P_fs.gam)
+gam.check(P_fs.gam)
+qq.gam(P_fs.gam, rep = 500)
+
+```
+
+```{r plot P GAM}
+
+pred_Pcat<-predict_gam(P_fs.gam)
+cbbPalette <- c("#56B4E9",  "#E69F00", "#CC79A7", "#0072B2",  "#D55E00")
+Pcat.p <- ggplot()+
+ geom_smooth(data = pred_Pcat, aes(Mass_per_loss, y = exp(fit), color = initial_P_category), size = 2)+
+  geom_point(data = P_analysis, aes(Mass_per_loss, P_prop_initial, color = initial_P_category), alpha = 0.25)+
+  xlim(c(0,85))+
+  #ylim(c(0.0,4.0))+
+  #facet_wrap(.~initial_P_category)+
+   #facet_wrap(.~initial_N_category)+
+  xlab("Mass loss (%)")+
+  ylab("Proportion of Initial P")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  scale_color_manual(aesthetics = "color", values = cbbPalette, breaks = levels(P_analysis$initial_P_category))+
+  guides(color=guide_legend( title="Initial %P Category"))
+  
+ggsave(filename = "Pcat_p.jpeg", plot=Pcat.p, width = 7, height = 5)
   NULL
 
 ```
 
-Do same stuff for P
-Look at NP ratios
+```{r plot C:P }
+P_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = CP_molar, color = initial_CP_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))
 
+P_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = CP_molar, color = initial_CP_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))
+
+
+P_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = postleach_CP_initial, color = initial_CP_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))
+
+```
+
+```{r GAM P}
+CP_fs.gam <- gam(CP_molar ~ s(Mass_per_loss, initial_CP_category, bs = "fs", m = 1), data = P_analysis, family = Gamma(link = "log"))
+
+summary(CP_fs.gam)
+draw(CP_fs.gam)
+gam.check(CP_fs.gam)
+qq.gam(CP_fs.gam, rep = 500)
+
+```
+
+```{r plot CP GAM}
+
+pred_CPcat<-predict_gam(CP_fs.gam)
+
+CPcat.p<-ggplot()+
+  geom_smooth(data = pred_CPcat, aes(Mass_per_loss, y = exp(fit), color = initial_CP_category), size = 2)+
+  geom_point(data = P_analysis, aes(Mass_per_loss, CP_molar, color = initial_CP_category), alpha = 0.25)+
+  xlim(c(0,85))+
+  #ylim(c(0.0,4.0))+
+  #facet_wrap(.~initial_CP_category)+
+  xlab("Mass loss (%)")+
+  ylab("C:P")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  scale_color_manual(aesthetics = "color", values = cbbPalette, breaks = levels(P_analysis$initial_CP_category))+
+  guides(color=guide_legend( title="Initial C:P Category"))+
+  scale_y_continuous(breaks = c(0,1000,2500,5000,7500,10000,12500))
+  CPcat.p
+ggsave(filename = "CPcat_p.jpeg", plot=CPcat.p, width = 7, height = 5)
+  NULL
+
+  
+
+```
+
+#leaching P
+```{r}
+P_leached%>%
+  ggplot(aes(x = Meas_Day, y = P_prop_initial))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,5))
+
+P_leached%>%
+  ggplot(aes(x = Meas_Day, y = P_per))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,5))
+```
+
+
+#leaching CP
+```{r}
+P_leached%>%
+  ggplot(aes(x = Meas_Day, y = CP_prop_initial))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,10))
+```
+
+#NP analysis
+```{r pare dataset}
+NP_analysis <- litter_lotic_postleach%>%
+  #filter(initial_NP<500)%>%
+  mutate(initial_NP_category = case_when(initial_NP>150 ~ "high",
+                                         initial_NP>75 & initial_NP <= 150 ~ "med-high",
+                                         initial_NP>50 & initial_NP <= 75 ~ "med",
+                                         initial_NP>35 & initial_NP <= 50 ~ "low-med",
+                                         initial_NP <= 35~ "low"),
+         initial_NP_category = as_factor(initial_NP_category))%>%
+  mutate(decomp_stage = case_when(Mass_per_loss>50 ~ "late",
+                                  Mass_per_loss>25 & Mass_per_loss <= 50 ~ "middle",
+                                  Mass_per_loss <=25 ~ "early"),
+         decomp_stage = as_factor(decomp_stage))%>%
+  group_by(series_index)%>%
+  mutate(postleach_initial_P = first(P_per),
+         postleach_prop_P = P_per/first(P_per),
+         postleach_initial_N = first(N_per),
+         postleach_prop_N = N_per/first(N_per),
+        postleach_initial_CP = first(CP_molar),
+        postleach_prop_CP = CP_molar/first(CP_molar),
+        postleach_initial_CN = first(CN_molar),
+        postleach_prop_CN = CN_molar/first(CN_molar))
+  
+  
+  
+  
+  
+  NP_leached <- litter_lotic_postleach%>% 
+    filter(postleach_category == "preleach")%>%
+    filter(Meas_Day <= 4)
+  
+```  
+
+```{r plot N:P }
+NP_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = NP_molar, color = initial_NP_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,85))+
+  ylim(c(0,195))
+
+NP_analysis%>%
+  ggplot(aes(x = Mass_per_loss, y = NP_molar, color = initial_NP_category))+
+  geom_point()+
+  geom_smooth(method = "loess")+
+  xlim(c(0,100))+
+  ylim(c(0,150))+
+  facet_wrap(.~initial_NP_category)
+
+NP_analysis%>%
+ # filter(initial_NP_category == "low")%>%
+  ggplot(aes(x = postleach_prop_P, y = postleach_prop_N, color = initial_NP_category, shape = decomp_stage))+
+  geom_point()+
+  #geom_smooth(method = "loess")+
+  #xlim(c(0,100))+
+  #ylim(c(0,150))+
+  #facet_wrap(.~initial_NP_category, scales = "free")+
+  NULL
+
+
+NP_analysis%>%
+ # filter(initial_NP_category == "low")%>%
+  ggplot(aes(x = postleach_prop_P, y = postleach_prop_N, color = decomp_stage, shape = initial_NP_category))+
+  geom_point()+
+  #geom_smooth(method = "loess")+
+  #xlim(c(0,100))+
+  #ylim(c(0,150))+
+  facet_wrap(.~initial_NP_category, scales = "free")+
+  NULL
+
+
+
+```
+
+```{r NP GAM}
+NP_fs.gam <- gam(NP_molar ~ s(Mass_per_loss, initial_NP_category, bs = "fs", m = 1), data = NP_analysis, family = Gamma(link = "log"))
+
+summary(NP_fs.gam)
+draw(NP_fs.gam)
+gam.check(NP_fs.gam)
+qq.gam(NP_fs.gam, rep = 500)
+
+
+```
+
+
+```{r plot NP GAM}
+pred_NPcat<-predict_gam(NP_fs.gam)
+
+
+NPcat.p<-ggplot()+geom_smooth(data = pred_NPcat, aes(Mass_per_loss, y = exp(fit), color = initial_NP_category), size = 2)+
+  geom_point(data = NP_analysis, aes(Mass_per_loss, NP_molar, color = initial_NP_category), alpha = 0.25)+
+  xlim(c(0,85))+
+  #ylim(c(0.0,4.0))+
+  #facet_wrap(.~initial_CP_category)+
+  xlab("Mass loss (%)")+
+  ylab("N:P")+
+  theme(panel.grid.major = element_blank(), 
+        panel.grid.minor = element_blank(),
+        panel.background = element_blank(), 
+        axis.line = element_line(colour = "black"), 
+        axis.text.x = element_text(size=14),
+        axis.text.y = element_text(size=14), 
+        axis.title=element_text(size=16,face="bold"))+
+  scale_color_manual(aesthetics = "color", values = cbbPalette, breaks = levels(NP_analysis$initial_NP_category))+
+  guides(color=guide_legend( title="Initial N:P Category"))+
+  #scale_y_continuous(breaks = c(0,1000,2500,5000,7500,10000,12500))
+  NULL
+
+  NPcat.p
+
+
+ggsave(filename = "NPcat_p.jpeg", plot=NPcat.p, width = 7, height = 5)
+  NULL
+
+```

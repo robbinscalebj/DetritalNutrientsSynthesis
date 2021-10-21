@@ -18,7 +18,7 @@ library(mgcv)
 ```{r data ingest}
 
 
-det <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database_preliminary.csv")
+det <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database_preliminary.csv")
 
 ```
 
@@ -92,8 +92,11 @@ det2 <- det%>%
 ```{r trim data}
 det3<-det2%>%
   filter(Mass_per_remaining<=100)%>%
+  filter(Mass_per_remaining >=10)%>%
   filter(initial_N <6)%>%
-  mutate(initial_N = as_factor(initial_N))
+  filter(!is.na(N_mass_norm))%>%
+  filter(N_mass_norm != 0)
+  #filter(Detritus_Type == "leaves", System == "stream")
 
 ```
 
@@ -104,11 +107,28 @@ Alt hypotheses: Linear relationship and/or no significant variation explained by
 
 ```{r GAM initial N}
 
-N.gam <- gam(data = det3, N_mass_norm ~ s(Mass_per_loss) + s(initial_N, bs = "fs") + s(series_index, bs = "re"), method = "REML")
-summary(N.gam)
-plot(N.gam)
+N.gam <- gam(data = det3, N_mass_norm ~ s(Mass_per_loss, k =5) + s(initial_N, k = 4) + s(series_index, bs = "re"), family = Gamma(link = "log"), method = "REML")
+#N.gam <- gam(data = det3, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) , family = Gamma(), method = "REML")
 
+summary(N.gam)
+draw(N.gam)
+appraise(N.gam)
 
 
 ```
 
+
+```{r plot predictions }
+gam_pred<-predict_gam(N.gam, values = list(initial_N = c(0.1, 0.5, 1, 1.5, 2,3,4)))%>%
+  mutate(initial_N = as_factor(initial_N))
+
+
+  ggplot(data = gam_pred, aes(Mass_per_loss, fit))+
+  geom_smooth_ci(data = gam_pred, initial_N)+
+  geom_point(data = det3, aes(Mass_per_loss, N_mass_norm), alpha = 0.05)+
+    scale_x_continuous(limits = c(0,50))+
+    scale_y_continuous(limits = c(0,4))
+
+
+
+```
