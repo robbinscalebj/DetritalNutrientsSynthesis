@@ -18,7 +18,7 @@ library(mgcv)
 ```{r data ingest}
 
 
-det <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database_preliminary.csv")
+det <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
 
 ```
 
@@ -97,9 +97,10 @@ det3<-det2%>%
   filter(initial_N <6)%>%
   filter(!is.na(N_mass_norm))%>%
   filter(N_mass_norm != 0)%>%
-  mutate(weights = ifelse(Mass_per_loss == 0, 1e6, 1))%>%
+  mutate(weights = ifelse(Mass_per_loss == 0, 1e6, 1))
  # filter(mesh_cat == "coarse")%>%
-  filter(Detritus_Type == "leaves")
+ # filter(Detritus_Type == "leaves")
+  
 
 ```
 
@@ -133,29 +134,16 @@ Alt hypotheses: Linear relationship and/or no significant variation explained by
 basic viz could plot groups of initial N as loess curves along Mass loss
 
 
-```{r force GAM}
 
-knots <- data.frame(x=seq(0,4,length=6)) ## create knots
-## set up smoother...
-sm <- smoothCon(s(Mass_per_loss,k=6,bs="cr"),data = det3,knots=knots)[[1]]
-
-## 3rd parameter is value of spline at knot location 0,
-## set it to 0 by dropping...
-X <- sm$X[,-3]        ## spline basis
-S <- sm$S[[1]][-3,-3] ## spline penalty
-off <- det3$Mass_per_loss*0 + 1       ## offset term to force curve through (0, 1)
-
-## fit spline constrained through (0, .6)...
-b <- gam(N_mass_norm ~ X - 1 + offset(off),data = det3, paraPen=list(X=list(S)))
-lines(det3$Mass_per_loss,predict(b))
-```
 
 
 
 ```{r GAM initial N}
 
 
-N.gam <- gam(data = det3, N_prop_initial ~ te(Mass_per_loss, initial_N) + s(series_index, bs = "re"), method = "REML")
+#N.gam <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N) + s(series_index, bs = "re"), method = "REML")
+
+N.gam <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic) + s(series_index, bs = "re"), method = "REML")
 
 
 summary(N.gam)
@@ -167,15 +155,15 @@ appraise(N.gam)
 
 
 ```{r plot predictions }
-gam_pred<-predict_gam(N.gam,  exclude_terms = "s(series_index)",values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,2,3.5,4.5)))%>%
-  mutate(initial_N = as_factor(initial_N))
+#gam_pred<-predict_gam(N.gam,  exclude_terms = "s(series_index)",values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,2,3.5,4.5)))%>%
+ # mutate(initial_N = as_factor(initial_N))
 
 
   ggplot()+
   geom_point(data = gam_pred, aes(x = Mass_per_loss, y = fit, color = initial_N))+
-  geom_point(data = det3, aes(Mass_per_loss, N_prop_initial), alpha = 0.05)+
+  geom_point(data = det3[!is.na(det3$Lotic_Lentic),], aes(Mass_per_loss, N_mass_norm), alpha = 0.05)+
     scale_x_continuous(limits = c(0,95))+
-    #facet_grid(.~mesh_cat)+
+    facet_grid(.~Lotic_Lentic)+
     #scale_y_continuous(limits = c(0,4))+
     #geom_abline(slope = -0.01, intercept = 1)+
     NULL
