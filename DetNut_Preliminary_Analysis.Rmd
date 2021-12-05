@@ -12,6 +12,7 @@ library(assertr)
 library(janitor)
 library(gratia)
 library(mgcv)
+library(tidymv)
 
 ```
 
@@ -93,11 +94,13 @@ det2 <- det%>%
 det3<-det2%>%
   filter(Mass_per_remaining<=100)%>%
  # filter(!between(Meas_Day, 0,7))%>%
-  filter(Mass_per_remaining >=10)%>%
-  filter(initial_N <6)%>%
+  filter(Mass_per_remaining >=20)%>%
+  filter(initial_N <3)%>%
   filter(!is.na(N_mass_norm))%>%
   filter(N_mass_norm != 0)%>%
-  mutate(weights = ifelse(Mass_per_loss == 0, 1e6, 1))
+  mutate(weights = ifelse(Mass_per_loss == 0, 1e6, 1))%>%
+  filter(Detritus_Type == "leaves", System == "stream")%>%
+filter(Remain_Mass_Category == "afdm"| Remain_Mass_Category == "dm")
  # filter(mesh_cat == "coarse")%>%
  # filter(Detritus_Type == "leaves")
   
@@ -140,34 +143,56 @@ basic viz could plot groups of initial N as loess curves along Mass loss
 
 ```{r GAM initial N}
 
+#could specify knots to be equally distributed by amount of data
+#gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic)
 
-#N.gam <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N) + s(series_index, bs = "re"), method = "REML")
+#N.gam <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N) +s(series_index, bs = "re"), method = "REML") #this is really overestimating curves at high end in particular.
 
-N.gam <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic) + s(series_index, bs = "re"), method = "REML")
+N.gam.gamma1 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, bs = "cr", k = c(15, 10)) +  s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
+#knots = list(Mass_per_loss = c(0,2,4,6,8,11,13,17,20,40,60,80))
 
-summary(N.gam)
-draw(N.gam)
-appraise(N.gam)
+#N.gam.gamma1k <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, k = c(9, 5), by = Lotic_Lentic) +s(series_index, bs = "re"), knots = list(Mass_per_loss = c(0,3,7,12,17,20,40,60,80)), method = "REML", family = Gamma(link = "log"))
 
+#N.gam.gamma2 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N) +s(series_index, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+
+#summary(N.gam)
+#draw(N.gam)
+#appraise(N.gam)
+
+summary(N.gam.gamma1)
+draw(N.gam.gamma1)
+appraise(N.gam.gamma1)
+
+#summary(N.gam.gamma2)
+#draw(N.gam.gamma2)
+#appraise(N.gam.gamma2)
+
+#summary(N.gam.gamma1k)
+#draw(N.gam.gamma1k)
+#appraise(N.gam.gamma1k)
 
 ```
 
 
 ```{r plot predictions }
-#gam_pred<-predict_gam(N.gam,  exclude_terms = "s(series_index)",values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,2,3.5,4.5)))%>%
- # mutate(initial_N = as_factor(initial_N))
+gam_pred<-predict_gam(N.gam.gamma1, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.4,0.5, 0.6,0.8, 1,2,2.5)))%>% mutate(initial_N = as_factor(initial_N))
 
 
   ggplot()+
-  geom_point(data = gam_pred, aes(x = Mass_per_loss, y = fit, color = initial_N))+
+  geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
   geom_point(data = det3[!is.na(det3$Lotic_Lentic),], aes(Mass_per_loss, N_mass_norm), alpha = 0.05)+
     scale_x_continuous(limits = c(0,95))+
     facet_grid(.~Lotic_Lentic)+
-    #scale_y_continuous(limits = c(0,4))+
+    scale_y_continuous(limits = c(0,4), breaks = c(0,0.5,1,2))+
     #geom_abline(slope = -0.01, intercept = 1)+
     NULL
 
 
+```
+Tendency is for %N to actually increase in the first few days of incubation - more mass of 'stuff' leaches than N. Early hump is likely an 'retention' of N relative to overall mass lost, therefore more N than initially
+```{r calc derivatives}
+
+m2.d <- fderiv(N.gam.gamma1)
 
 ```
