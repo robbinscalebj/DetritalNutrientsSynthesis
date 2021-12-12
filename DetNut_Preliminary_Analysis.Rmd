@@ -99,7 +99,8 @@ det3<-det2%>%
   filter(!is.na(N_mass_norm))%>%
   filter(N_mass_norm != 0)%>%
   mutate(weights = ifelse(Mass_per_loss == 0, 1e6, 1))%>%
-  filter(Detritus_Type == "leaves", System == "stream")%>%
+  filter(Detritus_Type == "leaves")%>%
+  #filter(System = "stream")%>%>
 filter(Remain_Mass_Category == "afdm"| Remain_Mass_Category == "dm")
  # filter(mesh_cat == "coarse")%>%
  # filter(Detritus_Type == "leaves")
@@ -148,7 +149,7 @@ basic viz could plot groups of initial N as loess curves along Mass loss
 
 #N.gam <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N) +s(series_index, bs = "re"), method = "REML") #this is really overestimating curves at high end in particular.
 
-N.gam.gamma1 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, bs = "cr", k = c(15, 10)) +  s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+N.gam.gamma2 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic, bs = "cr", k = c(15, 10)) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
 #knots = list(Mass_per_loss = c(0,2,4,6,8,11,13,17,20,40,60,80))
 
@@ -190,9 +191,19 @@ gam_pred<-predict_gam(N.gam.gamma1, exclude_terms = "s(series_index)",  values =
 
 
 ```
-Tendency is for %N to actually increase in the first few days of incubation - more mass of 'stuff' leaches than N. Early hump is likely an 'retention' of N relative to overall mass lost, therefore more N than initially
+
 ```{r calc derivatives}
 
-m2.d <- fderiv(N.gam.gamma1)
+gam_pred2<-predict_gam(N.gam.gamma2, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.4,0.5, 0.6,0.8, 1,2,2.5)))%>% mutate(initial_N = as_factor(initial_N))
+
+
+  ggplot()+
+  geom_point(data = gam_pred2, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+  geom_point(data = det3[!is.na(det3$Lotic_Lentic),], aes(Mass_per_loss, N_mass_norm), alpha = 0.05)+
+    scale_x_continuous(limits = c(0,95))+
+    facet_grid(.~Lotic_Lentic)+
+    scale_y_continuous(limits = c(0,4), breaks = c(0,0.5,1,2))+
+    #geom_abline(slope = -0.01, intercept = 1)+
+    NULL
 
 ```
