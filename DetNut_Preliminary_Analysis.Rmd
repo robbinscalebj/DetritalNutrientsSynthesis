@@ -43,7 +43,7 @@ det <- det_raw%>%
          N_prop_initial = N_per/first(N_per),
          P_prop_initial = P_per/first(P_per),
          C_mass_norm = ((C_per/100)*Mass_per_remaining)/(first(C_per/100)*first(Mass_per_remaining)),
-         N_mass_norm = ((N_per/100)*Mass_per_remaining)/(first(N_per/100)*first(Mass_per_remaining)),
+         N_mass_norm = ((N_per/100)*(Mass_per_remaining/100))/((first(N_per)/100)*first(Mass_per_remaining/100)),
          P_mass_norm = ((P_per/100)*Mass_per_remaining)/(first(P_per/100)*first(Mass_per_remaining)))%>%
   #fill in any places where ratios could have been calculated, but weren't
 
@@ -100,46 +100,51 @@ det_trim<-det%>%
   filter(Detritus_Condition == "senesced")%>%
   filter(Remain_Mass_Category == "afdm"| Remain_Mass_Category == "dm")%>%
   mutate(mesh_cat = fct_drop(mesh_cat, "open"))%>%
-  ungroup()%>%
-  mutate(N_bin = cut_number(initial_N, n = 5))
+  ungroup()
+
 
 
 ```
 
+#Modeling Framework
+We will use our dataset to establish and explore empirical patterns of detrital nutrient content and stoichiometry, and to base needs for future research. We can use GAMs to model patterns to allow for non-linear patterns (hypothesized based on terrestrial and some aquatic theory). Modeling will highlight patterns but also limits of our dataset, which we can use to define future research objectives.
 
+We explicitly hypothesize that nutrient-mass loss curves are both non-linear, and strongly predicted by initial nutrient content. Exploratory analysis, when possible, should focus on potential alternative factors (e.g., external nutrients) that predict observed patterns. 
 
-
-#GAM
-
-Central hypothesis here is: Detrital nutrient mass is non-linearly driven by decomposition stage and initial detrital nutrient content
-Alt hypotheses: Linear relationship and/or no significant variation explained by initial detrital nutrient content.
-
-basic viz could plot groups of initial N as loess curves along Mass loss
+#N modeling
+##N mass loss models
+Should collapse these to Coarse and fine models, using 'by' to model the Lotic_Lentic split, and then analyzing fine lotic samples separately. 
 
 
 
 ```{r Lotic - Coarse}
 
 det_loc <- det_trim%>%
-  filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic")
+  filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic")%>%
+  mutate(N_bin = cut_number(initial_N, n = 5))%>%mutate(N_bin = as_factor(N_bin))
+det_loc_Nbins <- levels(det_loc$N_bin)
+det_loc<-det_loc%>%
+  mutate(N_bin = fct_recode(N_bin, "very low" = det_loc_Nbins[1], low = det_loc_Nbins[2],  med = det_loc_Nbins[3],  high = det_loc_Nbins[4], "very high" = det_loc_Nbins[5]))
+
 
 N.loc.gam <- gam(data = det_loc, N_mass_norm ~ te(Mass_per_loss, initial_N, bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
 
-gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
+#gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
 
+#how to map N_bin to predicted initial_N values
 
   ggplot()+
-  geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), shape = initial_N))+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm, color = N_bin), alpha = 0.3)+
-    scale_x_continuous(limits = c(0,95))+
-    #facet_grid(.~Lotic_Lentic)+
-    scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
-    geom_abline(slope = -0.01, intercept = 1)+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_prop_initial, size=initial_N), alpha = 0.3)+
+    #geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit)))+
+    #facet_grid(.~N_bin)+
+    #scale_x_continuous(limits = c(0,95))+
+    #scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
+    geom_abline(slope = -1, intercept = 1)+
     NULL
   
-  summary(N.loc.gam)
-  appraise(N.loc.gam)
+  #summary(N.loc.gam)
+  #appraise(N.loc.gam)
 ```
  
 
@@ -147,8 +152,11 @@ gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = li
 
 det_lec <- det_trim%>%
   filter(mesh_cat == "coarse", Lotic_Lentic == "Lentic")
+  det_lec_Nbins <- levels(det_loc$N_bin)
+det_lec<-det_lec%>%
+  mutate(N_bin = fct_recode(N_bin, "very low" = det_lec_Nbins[1], low = det_lec_Nbins[2],  med = det_lec_Nbins[3],  high = det_lec_Nbins[4], "very high" = det_lec_Nbins[5]))
 
-N.lec.gam <- gam(data = det_lec, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+N.lec.gam <- gam(data = det_lec, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "bs") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
 
 gam_pred<-predict_gam(N.lec.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>%  
@@ -156,10 +164,10 @@ gam_pred<-predict_gam(N.lec.gam, exclude_terms = "s(series_index)",  values = li
 
 
   ggplot()+
- # geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+  #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), ymin = exp(fit-se.fit),ymax = exp(fit+se.fit), color = initial_N))+
   geom_point(data = det_lec, aes(Mass_per_loss, N_mass_norm, color = N_bin), alpha = 0.5)+
     scale_x_continuous(limits = c(0,95))+
-    #facet_grid(.~Lotic_Lentic)+
+    facet_grid(.~N_bin)+
     scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
@@ -172,22 +180,34 @@ gam_pred<-predict_gam(N.lec.gam, exclude_terms = "s(series_index)",  values = li
 ```{r Lotic - Fine}
 
 det_lof <- det_trim%>%
-  filter(mesh_cat == "fine", Lotic_Lentic == "Lotic")
+  filter(mesh_cat == "fine", Lotic_Lentic == "Lotic")%>%mutate(N_bin = cut_number(initial_N, n = 5))%>%mutate(N_bin = as_factor(N_bin))
+det_lof_Nbins <- levels(det_loc$N_bin)
+det_lof<-det_lof%>%
+  mutate(N_bin = fct_recode(N_bin, "very low" = det_lof_Nbins[1], low = det_lof_Nbins[2],  med = det_lof_Nbins[3],  high = det_lof_Nbins[4], "very high" = det_lof_Nbins[5]))
 
-N.lof.gam <- gam(data = det_lof, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+N.lof.gam <- gam(data = det_lof, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "cr") , method = "REML", family = Gamma(link = "log"))
 
 
-gam_pred<-predict_gam(N.lof.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
+gam_pred<-predict_gam(N.lof.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.45,0.7,1.0,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
 
 
   ggplot()+
-  geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
-  geom_point(data = det_lof, aes(Mass_per_loss, N_mass_norm), alpha = 0.2)+
-    scale_x_continuous(limits = c(0,95))+
-    #facet_grid(.~Lotic_Lentic)+
+  #geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+  geom_point(data = det_lof, aes(1-C_mass_norm, N_mass_norm, color = N_bin), alpha = 0.5)+
+    scale_x_continuous(limits = c(0,1))+
+    facet_grid(.~N_bin)+
     scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
+  
+    ggplot()+
+  geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+  geom_point(data = det_lof, aes(Mass_per_loss, N_mass_norm), alpha = 0.5)+
+    scale_x_continuous(limits = c(0,95))+
+    scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    NULL
+  
   
    summary(N.lof.gam)
   appraise(N.lof.gam)
