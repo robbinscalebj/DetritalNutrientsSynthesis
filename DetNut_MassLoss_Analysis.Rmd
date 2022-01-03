@@ -1,0 +1,26 @@
+---
+title: "DetNut_MassLoss"
+author: "CJR"
+date: "12/26/2021"
+output: html_document
+---
+The purpose of this analysis is to test 1) assumptions about the log-linearity of mass loss during stream detrital decomposition, and 2) How intrinsic and extrinsic factors influence the functional form of litter breakdown through time
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(assertr)
+library(janitor)
+library(gratia)
+library(mgcv)
+library(tidymv)
+
+```
+
+```{r data ingest}
+
+
+det_raw <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
+
+```
+
