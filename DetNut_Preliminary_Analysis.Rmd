@@ -107,12 +107,13 @@ det_trim<-det%>%
 ```
 
 #Modeling Framework
-We will use our dataset to establish and explore empirical patterns of detrital nutrient content and stoichiometry, and to base needs for future research. We can use GAMs to model patterns to allow for non-linear patterns (hypothesized based on terrestrial and some aquatic theory). Modeling will highlight patterns but also limits of our dataset, which we can use to define future research objectives.
+We will use our dataset to establish and explore empirical patterns of detrital nutrient content and stoichiometry, and to base future research needs. We can use GAMs to model non-linear patterns (hypothesized based on terrestrial and some aquatic theory). Modeling will highlight patterns but also limits of our dataset, which we can use to define future research objectives.
 
-We explicitly hypothesize that nutrient-mass loss curves are both non-linear, and strongly predicted by initial nutrient content. Exploratory analysis, when possible, should focus on potential alternative factors (e.g., external nutrients) that predict observed patterns. 
+We explicitly hypothesize that nutrient-mass loss curves are non-linear, strongly predicted by initial nutrient content, and curve inflections are related to initial nutrient content. Exploratory analysis, when possible, should focus on potential alternative factors that predict (or additionally) predict observed patterns beyond initial nutrient content. Other predictors should be tested with and without initial nutrient content - even if not enough data to look at additional predictors (suggests future research), can rule out other models. Additional predictors include Temperature, external N, external P, velocityv
+
 
 #N modeling
-##N mass loss models
+##Basic N mass loss models
 Should collapse these to Coarse and fine models, using 'by' to model the Lotic_Lentic split, and then analyzing fine lotic samples separately. 
 
 
@@ -236,68 +237,31 @@ gam_pred<-predict_gam(N.lef.gam, exclude_terms = "s(series_index)",  values = li
   
 ```
 
+##Basic N Mass loss~time models
+##N Mass exploratory modeling
+Test factors: Temp, N, P - models should be with and without initial N content. Even 
 
 
-#####
+#P modeling
+##Basic P mass loss models
+##Basic P mass loss~time models
+##Exploratory P mass modeling
 
 
-```{r}
+#Stoichiometry - could following be separate paper?
+This paper could focus on patterns of stoichiometric convergence a la some of Manning papers
+Look at results of everything then decide
+#CN modeling
+##CN mass loss by initial N
+##CN exploratory
 
-det4<-det3%>%
-  filter(Detritus_Type == "leaves", System == "stream")%>%
-  mutate(Decomp_Period = case_when(Meas_Day >=24 & Meas_Day <60 ~ "Mid-term",
-                                   Meas_Day <24 ~ "Short-term",
-                                   Meas_Day >=60 ~ "Late-term"),
-         k_sp = -(log(Mass_per_remaining/100))/Meas_Day)%>%
-  #select(Meas_Day, Mass_per_remaining, Decomp_Period, k_sp)%>%
-  filter(Meas_Day >0)
+#CP modeling
+##CP mass loss by initial P
+##CP exploratory
 
-
-ggplot(data = det3, aes (x = Mass_per_loss, y = N_mass_norm))+
-  geom_point()+
-  geom_smooth(method = "gam")+
-  #scale_y_continuous (limits = c(0,3))+
-  #facet_wrap(.~Decomp_Period, scales = "free")+
-NULL
-
-```
+#NP modeling
+##NP exploratory
 
 
-```{r GAM initial N}
 
-#could specify knots to be equally distributed by amount of data
-#gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic)
 
-N.gam.gamma0 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
-
-N.gam.gamma1 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic,  bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
-
-N.gam.gamma2 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic,  bs = "cr", k = c(15, 10))+te(Mass_per_loss, initial_N, by = mesh_cat,  bs = "cr", k = c(15, 10)) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
-
-N.gam.gamma3 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = mesh_cat,  bs = "cr", k = c(15, 10)) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
-
-N.gam.gamma4 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, by = Lotic_Lentic,  bs = "cr", k = c(15, 10))+te(Mass_per_loss, initial_N, by = mesh_cat,  bs = "cr", k = c(15, 10)), method = "REML", family = Gamma(link = "log"))
-
-#knots = list(Mass_per_loss = c(0,2,4,6,8,11,13,17,20,40,60,80))
-
-#N.gam.gamma1k <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N, k = c(9, 5), by = Lotic_Lentic) +s(series_index, bs = "re"), knots = list(Mass_per_loss = c(0,3,7,12,17,20,40,60,80)), method = "REML", family = Gamma(link = "log"))
-
-#N.gam.gamma2 <- gam(data = det3, N_mass_norm ~ te(Mass_per_loss, initial_N) +s(series_index, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-#summary(N.gam)
-#draw(N.gam)
-#appraise(N.gam)
-
-summary(N.gam.gamma2)
-draw(N.gam.gamma2)
-appraise(N.gam.gamma2)
-
-#summary(N.gam.gamma2)
-#draw(N.gam.gamma2)
-#appraise(N.gam.gamma2)
-
-#summary(N.gam.gamma1k)
-#draw(N.gam.gamma1k)
-#appraise(N.gam.gamma1k)
-
-```
