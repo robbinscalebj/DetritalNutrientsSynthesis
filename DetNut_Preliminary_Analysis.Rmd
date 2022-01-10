@@ -8,7 +8,6 @@ output: html_document
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(assertr)
 library(janitor)
 library(gratia)
 library(mgcv)
@@ -113,12 +112,12 @@ We explicitly hypothesize that nutrient-mass loss curves are non-linear, strongl
 
 
 #N modeling
-##Basic N mass loss models
-Should collapse these to Coarse and fine models, using 'by' to model the Lotic_Lentic split, and then analyzing fine lotic samples separately. 
+##Lotic Coarse N mass-initial N models
+We could use 'by' variables to analyze models along a Lotic_Lentic split (i.e., lotic/lentic would be factor within a single model), but this adds considerable complexity within our modeling framework, particularly during exploratory analysis. Preliminary data visualization/exploration shows these categories are very different in terms of numbers of observations, and I think presenting and discussing qualitative differences between realms will suffice. Note that there are not enough data within the lentic-fine category to fit this GAM structure, but we can visualize it below.
 
 
 
-```{r Lotic - Coarse}
+```{r Lotic-Coarse}
 
 det_loc <- det_trim%>%
   filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic")%>%
@@ -128,28 +127,98 @@ det_loc<-det_loc%>%
   mutate(N_bin = fct_recode(N_bin, "very low" = det_loc_Nbins[1], low = det_loc_Nbins[2],  med = det_loc_Nbins[3],  high = det_loc_Nbins[4], "very high" = det_loc_Nbins[5]))
 
 
-N.loc.gam <- gam(data = det_loc, N_mass_norm ~ te(Mass_per_loss, initial_N, bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+N.loc.gam <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(initial_N) + ti(Mass_per_loss, initial_N, k = 16) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
+N.loc.gam1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(initial_N) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
-#gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
+N.loc.gam2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15)+ s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
-#how to map N_bin to predicted initial_N values
+gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
+
 
   ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_prop_initial, size=initial_N), alpha = 0.3)+
-    #geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit)))+
-    #facet_grid(.~N_bin)+
-    #scale_x_continuous(limits = c(0,95))+
-    #scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
-    geom_abline(slope = -1, intercept = 1)+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+    geom_abline(slope = -0.01, intercept = 1)+
     NULL
   
-  #summary(N.loc.gam)
-  #appraise(N.loc.gam)
+  gam_pred1<-predict_gam(N.loc.gam1, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
+
+
+  ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_point(data = gam_pred1, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    NULL
+  
+    gam_pred2<-predict_gam(N.loc.gam2, exclude_terms = "s(series_index)")
+
+
+  ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_point(data = gam_pred2, aes(x = Mass_per_loss, y = exp(fit)))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    NULL
+  
+  summary(N.loc.gam)
+  appraise(N.loc.gam)
+  k.check(N.loc.gam)
+  draw(N.loc.gam1)
+   summary(N.loc.gam1)
+  appraise(N.loc.gam1)
+  k.check(N.loc.gam1)
+  draw(N.loc.gam2)
+     summary(N.loc.gam2)
+  appraise(N.loc.gam2)
+  k.check(N.loc.gam2)
+```
+ No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but not necessarily linear.
+ 
+## N Mass exploratory modeling
+ So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends.
+ 
+```{r Lotic Coarse exploratory models}
+
+N.loc.temp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.tn <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TN_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.tp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TP_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.vel <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.ph <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(pH) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.lig <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Total_Phenolics_per) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.masscat <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 25, bs = "fs") + Remain_Mass_Category + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.erg <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Ergosterol_ug.g) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.masscattemp <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 15, bs = "fs") + Remain_Mass_Category +s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.masscatvel <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 15, bs = "fs") + Remain_Mass_Category +s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+
+
+summary(N.loc.temp)
+summary(N.loc.tn)
+summary(N.loc.tp)
+summary(N.loc.vel)
+summary(N.loc.ph)
+summary(N.loc.masscat)
+summary(N.loc.erg)
+summary(N.loc.masscattemp)
+
+
+
 ```
  
+ 
+ 
+ ##Coarse Lentic Nmass~initialN
 
-```{r Lentic - Coarse}
+```{r Coarse Lentic only}
 
 det_lec <- det_trim%>%
   filter(mesh_cat == "coarse", Lotic_Lentic == "Lentic")
@@ -178,7 +247,7 @@ gam_pred<-predict_gam(N.lec.gam, exclude_terms = "s(series_index)",  values = li
 ```
 
 
-```{r Lotic - Fine}
+```{r Lotic - Fine only}
 
 det_lof <- det_trim%>%
   filter(mesh_cat == "fine", Lotic_Lentic == "Lotic")%>%mutate(N_bin = cut_number(initial_N, n = 5))%>%mutate(N_bin = as_factor(N_bin))
@@ -186,20 +255,12 @@ det_lof_Nbins <- levels(det_loc$N_bin)
 det_lof<-det_lof%>%
   mutate(N_bin = fct_recode(N_bin, "very low" = det_lof_Nbins[1], low = det_lof_Nbins[2],  med = det_lof_Nbins[3],  high = det_lof_Nbins[4], "very high" = det_lof_Nbins[5]))
 
-N.lof.gam <- gam(data = det_lof, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "cr") , method = "REML", family = Gamma(link = "log"))
+N.lof.gam <- gam(data = det_lof, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "cr") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
 
 
 gam_pred<-predict_gam(N.lof.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.45,0.7,1.0,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
 
 
-  ggplot()+
-  #geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
-  geom_point(data = det_lof, aes(1-C_mass_norm, N_mass_norm, color = N_bin), alpha = 0.5)+
-    scale_x_continuous(limits = c(0,1))+
-    facet_grid(.~N_bin)+
-    scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
   
     ggplot()+
   geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
@@ -212,6 +273,7 @@ gam_pred<-predict_gam(N.lof.gam, exclude_terms = "s(series_index)",  values = li
   
    summary(N.lof.gam)
   appraise(N.lof.gam)
+  k.check(N.lof.gam)
 ```
 
 The Lentic-fine model won't fit - not enough data.
@@ -238,8 +300,35 @@ gam_pred<-predict_gam(N.lef.gam, exclude_terms = "s(series_index)",  values = li
 ```
 
 ##Basic N Mass loss~time models
-##N Mass exploratory modeling
-Test factors: Temp, N, P - models should be with and without initial N content. Even 
+```{r coarse}
+
+
+N.lct.gam <- gam(data = det_loc, N_mass_norm ~ s(Meas_Day,Lotic_Lentic, bs = "fs")+s(initial_N, Lotic_Lentic, bs = "fs")+ti(Meas_Day, initial_N,  bs = "cr", by = Lotic_Lentic) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+
+
+gam_pred<-predict_gam(N.lct.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.7,1.0,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
+
+
+  
+    ggplot()+
+      geom_point(data = det_loc, aes(Meas_Day, N_mass_norm), alpha = 0.5)+
+      geom_point(data = gam_pred, aes(x = Meas_Day, y = exp(fit), color = initial_N))+
+      facet_grid(.~Lotic_Lentic)+
+    #scale_x_continuous(limits = c(0,95))+
+      scale_y_continuous(limits = c(0,3), breaks = c(0,0.5,1,2))+
+      geom_abline(slope = -0.01, intercept = 1)+
+      NULL
+    
+  
+  draw(N.lct.gam)
+  summary(N.lct.gam)
+  appraise(N.lct.gam)
+  k.check(N.lct.gam)
+  
+```
+
+
+
 
 
 #P modeling
