@@ -171,9 +171,51 @@ gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = li
      summary(N.loc.gam2)
   appraise(N.loc.gam2)
   k.check(N.loc.gam2)
+
 ```
  No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but not necessarily linear.
  
+## N Mass exploratory modeling
+ So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends.
+ 
+```{r Lotic Coarse exploratory models}
+
+N.loc.temp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.tn <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TN_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.tp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TP_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.vel <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.ph <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(pH) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.lig <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Total_Phenolics_per) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.masscat <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 25, bs = "fs") + Remain_Mass_Category + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.erg <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Ergosterol_ug.g) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.masscattemp <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 15, bs = "fs") + Remain_Mass_Category +s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.loc.masscatvel <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 15, bs = "fs") + Remain_Mass_Category +s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+
+
+summary(N.loc.temp)
+summary(N.loc.tn)
+summary(N.loc.tp)
+summary(N.loc.vel)
+summary(N.loc.ph)
+summary(N.loc.masscat)
+summary(N.loc.erg)
+summary(N.loc.masscattemp)
+
+
+```
+ No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but not necessarily linear.
+ 
+<<<<<<< HEAD
 ## N Mass lotic exploratory modeling
  So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends.
  
@@ -233,6 +275,12 @@ summary(N.ext)
 
 ```
  
+ 
+ 
+ ##Coarse Lentic Nmass~initialN
+
+
+=======
  
  
  ##Coarse Lentic Nmass~initialN
@@ -345,6 +393,7 @@ N.lec.tpn <- gam(data = det_lec, N_mass_norm ~ s(Mass_per_loss) + s(TP_approx) +
 
 N.lec.masscat <- gam(data = det_lec[det_lec$Remain_Mass_Category == "afdm"|det_lec$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, bs = "fs") + Remain_Mass_Category + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
 
+
 #N.lec.erg <- gam(data = det_lec, N_mass_norm ~ s(Mass_per_loss) + s(Ergosterol_ug.g) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
 
 N.lec.masscattemp <- gam(data = det_lec[det_lec$Remain_Mass_Category == "afdm"|det_lec$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, bs = "fs") + Remain_Mass_Category +s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
@@ -368,6 +417,8 @@ AIC(N.lec.temp, N.lec.tn,N.lec.tp,N.lec.masscat,N.lec.masscattemp)
  
  
 ##N mass lotic-fine modeling 
+=======
+>>>>>>> e6a174ffb2b641a6c2bb6a199076bd6ee4be7eb3
 ```{r Lotic - Fine only}
 
 det_lof <- det_trim%>%
