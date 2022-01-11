@@ -215,7 +215,6 @@ summary(N.loc.masscattemp)
 ```
  No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but not necessarily linear.
  
-<<<<<<< HEAD
 ## N Mass lotic exploratory modeling
  So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends.
  
@@ -280,7 +279,7 @@ summary(N.ext)
  ##Coarse Lentic Nmass~initialN
 
 
-=======
+
  
  
  ##Coarse Lentic Nmass~initialN
@@ -418,7 +417,7 @@ AIC(N.lec.temp, N.lec.tn,N.lec.tp,N.lec.masscat,N.lec.masscattemp)
  
 ##N mass lotic-fine modeling 
 =======
->>>>>>> e6a174ffb2b641a6c2bb6a199076bd6ee4be7eb3
+
 ```{r Lotic - Fine only}
 
 det_lof <- det_trim%>%
