@@ -18,7 +18,7 @@ library(tidymv)
 ```{r data ingest}
 
 
-det_raw <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
+det_raw <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
 
 ```
 
@@ -41,6 +41,9 @@ det <- det_raw%>%
   mutate(C_prop_initial = C_per/first(C_per),
          N_prop_initial = N_per/first(N_per),
          P_prop_initial = P_per/first(P_per),
+         C_mass = ((C_per/100)*Mass_per_remaining),
+         N_mass = ((N_per/100)*Mass_per_remaining),
+         P_mass = ((P_per/100)*Mass_per_remaining),
          C_mass_norm = ((C_per/100)*Mass_per_remaining)/(first(C_per/100)*first(Mass_per_remaining)),
          N_mass_norm = ((N_per/100)*(Mass_per_remaining/100))/((first(N_per)/100)*first(Mass_per_remaining/100)),
          P_mass_norm = ((P_per/100)*Mass_per_remaining)/(first(P_per/100)*first(Mass_per_remaining)))%>%
@@ -108,7 +111,10 @@ det_trim<-det%>%
 #Modeling Framework
 We will use our dataset to establish and explore empirical patterns of detrital nutrient content and stoichiometry, and to base future research needs. We can use GAMs to model non-linear patterns (hypothesized based on terrestrial and some aquatic theory). Modeling will highlight patterns but also limits of our dataset, which we can use to define future research objectives.
 
-We explicitly hypothesize that nutrient-mass loss curves are non-linear, strongly predicted by initial nutrient content, and curve inflections are related to initial nutrient content. Exploratory analysis, when possible, should focus on potential alternative factors that predict (or additionally) predict observed patterns beyond initial nutrient content. Other predictors should be tested with and without initial nutrient content - even if not enough data to look at additional predictors (suggests future research), can rule out other models. Additional predictors include Temperature, external N, external P, velocityv
+
+We explicitly hypothesize that nutrient-mass loss curves are non-linear, strongly predicted by initial nutrient content, and curve inflections are related to initial nutrient content. Exploratory analysis, when possible, should focus on potential alternative factors that predict (or additionally predict) observed patterns beyond initial nutrient content. Other predictors should be tested with and without initial nutrient content - even if not enough data to look at additional predictors (suggests future research), can rule out other models. Additional predictors include Temperature, external N, external P, velocity...
+
+Specifically, the GAMs will have some mixed effects, to model 'subject-specific' (i.e., each time series) trends. This means a random slope - we need not model a  random intercept because the N_mass_loss data all start at a known point - each series starting point is normalized to 1. If we model unnormalized N mass as a response, we may want to include  random intercept. 
 
 
 #N modeling
@@ -116,112 +122,6 @@ We explicitly hypothesize that nutrient-mass loss curves are non-linear, strongl
 We could use 'by' variables to analyze models along a Lotic_Lentic split (i.e., lotic/lentic would be factor within a single model), but this adds considerable complexity within our modeling framework, particularly during exploratory analysis. Preliminary data visualization/exploration shows these categories are very different in terms of numbers of observations, and I think presenting and discussing qualitative differences between realms will suffice. Note that there are not enough data within the lentic-fine category to fit this GAM structure, but we can visualize it below.
 
 
-
-```{r knots test}
-#use lotic-coarse data
-#requires JOPS
-
-det_loc <- det_trim%>%
-  filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic")%>%
-  mutate(N_bin = cut_number(initial_N, n = 5))%>%mutate(N_bin = as_factor(N_bin))
-
-N1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss+1, k = 15, pc = 0), method = "REML", family = Gamma(link = "log"))
-draw(N1)
-
-#following pulls the smoothing parameter estimates from the unconstrained model
-k <- 13
-
-# Show regular spline fit (and save fitted object)
-f.ug <- gam(data = det_lec, N_mass_norm ~ te(Mass_per_loss, TN_approx,  bs = "tp"), method = "REML", family = Gamma(link = "log"))
-N <- length(f.ug$fitted.values)-1
-f.ug2 <- gam(data = det_lec, N_mass_norm ~ te(Mass_per_loss, initial_N,  bs = "tp"), method = "REML", family = Gamma(link = "log"), weights = c(1e8, 1:N * 0+1))
-
-gam_pred<-predict_gam(f.ug, exclude_terms = "s(series_index)",  values = list(TN_approx = c(10,100,500,1000)))%>% mutate(TN_approx = as_factor(TN_approx))
-
-
-  ggplot()+
-  geom_point(data = det_lec, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = TN_approx))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
-
-
-
-
-newdata <- data.frame(Mass_per_loss = seq(-1, 80, length.out = 1000))
-newdata$y_pred_fit0 <- predict(f.ug, newdata = newdata)
-N <- length(f.ug$fitted.values)-1
-# explicitly construct smooth term's design matrix
-sm <- smoothCon(s(Mass_per_loss,k=k,bs="cr"),data = det_loc,knots=NULL)[[1]]
-# find linear constraints sufficient for monotonicity of a cubic regression spline
-# it assumes "cr" is the basis and its knots are provided as input
-F <- mono.con(sm$xp)
-
-G <- list(
-X=sm$X,
-C=matrix(0,0,0),  # [0 x 0] matrix (no equality constraints)
-sp=f.ug$sp,       # smoothing parameter estimates (taken from unconstrained model)
-p=sm$xp,          # array of feasible initial parameter estimates
-y=det_loc$N_mass_norm,           
-w= c(1e8, 1:N * 0+1)  # weights for data    
-)
-
-G$Ain <- F$A        # matrix for the inequality constraints
-G$bin <- F$b        # vector for the inequality constraints
-G$S <- sm$S         # list of penalty matrices; The first parameter it penalizes is given by off[i]+1
-G$off <- 0          # Offset values locating the elements of M$S in the correct location within each penalty coefficient matrix.  (Zero offset implies starting in first location)
-
-p <- pcls(G);       # fit spline (using smoothing parameter estimates from unconstrained fit)
-
-# predict 
-newdata$y_pred_fit2 <- Predict.matrix(sm, data.frame(Mass_per_loss = newdata$Mass_per_loss)) %*% p
-# plot
-plot(N_mass_norm ~ Mass_per_loss, data = det_loc)
-lines(y_pred_fit0 ~ Mass_per_loss, data = newdata, col = 2, lwd = 2)
-lines(y_pred_fit2 ~ Mass_per_loss, data = newdata, col = 4, lwd = 2)
-abline(v = -1)
-abline(h = -0.1)
-
-```
-
-
-
-```{r b spline thing}
-#this forces correct constraints but won't regularize lambda
-
-# Boundary conditions
-  bx = c(0,100)
-  by = c(1,0)
-
-  # Compute bases for function, first and second derivative 
-  bdeg = 3
-  nseg = 10
-  B0 = bbase(det_loc$Mass_per_loss, bx[1], bx[2], nseg, bdeg)
-  nb = ncol(B0)
-  Gi = bbase(bx, bx[1], bx[2], nseg, bdeg)
-
-
-  # Set syste penalty and  with extra penalty
-  D   = diff(diag(nb), diff = 2)
-  P   = t(D) %*% D
-  Bb  = t(B0) %*% B0
-  Ci  = t(Gi) %*% Gi
-  lam = 0.01 #function isn't regularizing lambda.
-  kap = 1e8
-
-  # Solve system strategy 1
-  cof_p = solve(Bb + lam * P + kap * Ci) %*% (t(B0) %*% det_loc$N_mass_norm + kap * t(Gi) %*% by)
-  
-  plot(det_loc$Mass_per_loss, det_loc$N_mass_norm, xlim = bx, pch = 16)
-  #lines(det_loc$Mass_per_loss, ys, col = 8, lwd = 2)
-  points(bx, by, pch = 15)
-
-  # Strategy 1
-  lines(det_loc$Mass_per_loss, B0 %*% cof_p, lwd = 2, col = 2)
-  points(bx[1], (Gi %*% cof_p)[1], col = 2, pch = 16)
-  points(bx[2], (Gi %*% cof_p)[2], col = 2, pch = 16)
-
-```
 
 ```{r Lotic-Coarse}
 
@@ -232,37 +132,74 @@ det_loc_Nbins <- levels(det_loc$N_bin)
 det_loc<-det_loc%>%
   mutate(N_bin = fct_recode(N_bin, "very low" = det_loc_Nbins[1], low = det_loc_Nbins[2],  med = det_loc_Nbins[3],  high = det_loc_Nbins[4], "very high" = det_loc_Nbins[5]))
 
+#base model - global change in N mass curves
+N.loc <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
 
-N.loc.gam <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(initial_N) + ti(Mass_per_loss, initial_N, k = 16) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+N.loc <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15), method = "REML", family = Gamma(link = "inverse"))
+summary(N.loc)
+appraise(N.loc)
+draw(N.loc)
 
-N.loc.gam1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(initial_N) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
-
-N.loc.gam2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15)+ s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
-
-gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
+gam_pred<-predict_gam(N.loc, exclude_terms = "s(series_index,Mass_per_loss)")
+gam_pred<-predict_gam(N.loc)
 
 
   ggplot()+
   geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -se.fit), ymax = 1/(fit +se.fit)), alpha = 0.3)+
+    NULL
+
+#simple mass loss model - simpler model to see how well Mass loss predicts (i.e., proportional declines in N mass from initial quantity)
+N.loc1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15), method = "REML", family = Gamma(link = "inverse"))
+
+#simple mass loss model + random slope
+N.loc.2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+
+N.loc.3 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + ti(Mass_per_loss, initial_N) + s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+
+#base model + random intercept - in some ways this doesn't make sense because intercept should be 1
+N.loc.ri <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(initial_N) + ti(Mass_per_loss, initial_N, k = 16) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+
+#base model + random slope - allows sereies-to-series variation in relationship between predictor and N mass, captures autocorr, probably most appropriate model
+N.loc.rs <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) + ti(Mass_per_loss, initial_N, k = 16) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+
+# base model + random slope&intercept - random intercept still may be inappropriate given the data structure
+N.loc.rsi <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) + ti(Mass_per_loss, initial_N) + s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+
+
+
+
+
+
+
+AIC(N.loc, N.loc.ri,N.loc.rs,N.loc.rsi)
+
+gam_pred<-predict_gam(N.loc.rs, exclude_terms = "s(series_index,Mass_per_loss)",  values = list(initial_N = c(0.4,0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
+
+
+  ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
   
-  gam_pred1<-predict_gam(N.loc.gam1, exclude_terms = "s(series_index)",  values = list(initial_N = c(0.3,0.4,0.5, 0.6,0.8, 1,1.5,2.0)))%>% mutate(initial_N = as_factor(initial_N))
+  gam_pred1<-predict_gam(N.loc.rsi, exclude_terms = c("s(series_index)", "s(series_index,Mass_per_loss)"),  values = list(initial_N = c(0.4, 0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
 
 
   ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_point(data = gam_pred1, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
+    geom_point(data = gam_pred1, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
   
-    gam_pred2<-predict_gam(N.loc.gam2, exclude_terms = "s(series_index)")
+    gam_pred2<-predict_gam(N.loc, values = list(initial_N = c(0.4, 0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
 
 
   ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_point(data = gam_pred2, aes(x = Mass_per_loss, y = exp(fit)))+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
+    geom_point(data = gam_pred2, aes(x = Mass_per_loss, y = 1/fit))+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
   
@@ -279,56 +216,29 @@ gam_pred<-predict_gam(N.loc.gam, exclude_terms = "s(series_index)",  values = li
   k.check(N.loc.gam2)
 
 ```
- No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but not necessarily linear.
- 
-## N Mass exploratory modeling
- So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends.
- 
-```{r Lotic Coarse exploratory models}
+ No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but strong evidence of non-linearity. Residuals on N mass also quite decent
 
-N.loc.temp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.tn <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TN_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.tp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TP_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.vel <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.ph <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(pH) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.lig <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Total_Phenolics_per) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.masscat <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 25, bs = "fs") + Remain_Mass_Category + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.erg <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Ergosterol_ug.g) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.masscattemp <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 15, bs = "fs") + Remain_Mass_Category +s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-N.loc.masscatvel <- gam(data = det_loc[det_loc$Remain_Mass_Category == "afdm"|det_loc$Remain_Mass_Category == "dm",], N_mass_norm ~ s(Mass_per_loss, Remain_Mass_Category, k = 15, bs = "fs") + Remain_Mass_Category +s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
-
-
-
-summary(N.loc.temp)
-summary(N.loc.tn)
-summary(N.loc.tp)
-summary(N.loc.vel)
-summary(N.loc.ph)
-summary(N.loc.masscat)
-summary(N.loc.erg)
-summary(N.loc.masscattemp)
-
-
-```
- No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but not necessarily linear.
  
 ## N Mass lotic exploratory modeling
- So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends.
+ So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends. Additionally, we can also tell lots of non-linearity gets picked up by mass loss as single predictor, so we don't consider additional tensor-smooth interactions in our exploratory modeling.
+ 
+ Exogenous, endogenous, and methodological exploratory models informed combination models 
  
 ```{r Lotic Coarse exploratory models}
 
-N.loc.temp <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(Temperature_C) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+#ext vars = TP, TN, Velocity, Temp
 
-N.ext <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx) +s(Velocity_m.s) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+N.ext1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+#N.extn variations = TP, velocity should also receive a separate model to investigate, e.g., its moderation (interaction) on Mass_per_loss
+
+N.end1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) + s(initial_Lignin) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
+
+N.endn alternatives gets phenolics, hemicell? initial_P? NP?
+
+N.met1 <- ...needs to be Masscat, basically. continous mesh size?
+
+N.com1 <-
 
 N.loc.tn <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(TN_approx) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
 
@@ -382,12 +292,7 @@ summary(N.ext)
  
  
  
- ##Coarse Lentic Nmass~initialN
 
-
-
- 
- 
  ##Coarse Lentic Nmass~initialN
 
 
@@ -476,9 +381,10 @@ gam_pred4<-predict_gam(N.lec.gam4, exclude_terms = "s(series_index)")
   
   AIC(N.lec.gam,N.lec.gam1,N.lec.gam2,N.lec.gam3, N.lec.gam4)
 ```
-The MassxInitial N tensor interaction model is not horribly predictive model. However, it is the most parsimonious fit (lowest AIC) of all the base models. 
+The MassxInitial N tensor interaction model is not horribly predictive model. However, it is the most parsimonious fit (lowest AIC) of all the base models. But the fit is shit - wonder if that's because the equal initial values on 1 is correlated highly to initial_N or something like that)! Any exploratory models fit better?
 
 ## N Mass lentic exploratory modeling
+This will be limited compared to lotic analysis thanks to severely decreased sample size.
 
 ```{r Lentic Coarse exploratory models}
 
