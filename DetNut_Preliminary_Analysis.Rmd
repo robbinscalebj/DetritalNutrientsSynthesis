@@ -18,7 +18,7 @@ library(tidymv)
 ```{r data ingest}
 
 
-det_raw <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
+det_raw <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
 
 ```
 
@@ -100,10 +100,14 @@ det_trim<-det%>%
   mutate(weights = ifelse(Mass_per_loss == 0, 1e6, 1))%>%
   filter(Detritus_Type == "leaves")%>%
   filter(Detritus_Condition == "senesced")%>%
-  filter(Remain_Mass_Category == "afdm"| Remain_Mass_Category == "dm")%>%
+  filter(Remain_Mass_Category == "dm"|Remain_Mass_Category == "afdm")%>%
+  filter(mesh_cat != "open")%>%
+  mutate(Remain_Mass_Category = fct_drop(Remain_Mass_Category, only = c("dm_postleach", "afdm_postleach", "organic_carbon")))%>%
   mutate(mesh_cat = fct_drop(mesh_cat, "open"))%>%
   ungroup()
 
+levels(det_trim$Remain_Mass_Category)
+levels(det_trim$mesh_cat)
 
 
 ```
@@ -123,104 +127,61 @@ We could use 'by' variables to analyze models along a Lotic_Lentic split (i.e., 
 
 
 
-```{r Lotic-Coarse}
+```{r Lotic-Coarse global N loss model}
 
 det_loc <- det_trim%>%
   filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic")%>%
   mutate(N_bin = cut_number(initial_N, n = 5))%>%mutate(N_bin = as_factor(N_bin))
-det_loc_Nbins <- levels(det_loc$N_bin)
-det_loc<-det_loc%>%
-  mutate(N_bin = fct_recode(N_bin, "very low" = det_loc_Nbins[1], low = det_loc_Nbins[2],  med = det_loc_Nbins[3],  high = det_loc_Nbins[4], "very high" = det_loc_Nbins[5]))
-
-#base model - global change in N mass curves
-N.loc <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-N.loc <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15), method = "REML", family = Gamma(link = "inverse"))
-summary(N.loc)
-appraise(N.loc)
-draw(N.loc)
-
-gam_pred<-predict_gam(N.loc, exclude_terms = "s(series_index,Mass_per_loss)")
-gam_pred<-predict_gam(N.loc)
+  #filter(Mass_per_loss>0) #was worried about all the points at 0,1 inflating the R^2 (is that a thing?) but the effect is very small in removing vs retaining
 
 
-  ggplot()+
+#base model - global change in N mass curves - includes random slope, but not random intercept - uniform intercept desirable
+#after tinkering, Gamma distro with inverse link function yields best residuals
+N.loc.rs <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
+summary(N.loc.rs)
+appraise(N.loc.rs)
+draw(N.loc.rs)
+k.check(N.loc.rs)
+
+gam_pred<-predict_gam(N.loc.rs, exclude_terms = "s(series_index,Mass_per_loss)")
+ N.loc.rs.p<- ggplot()+
   geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
+    geom_smooth(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
     geom_abline(slope = -0.01, intercept = 1)+
-    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -se.fit), ymax = 1/(fit +se.fit)), alpha = 0.3)+
+    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
     NULL
-
-#simple mass loss model - simpler model to see how well Mass loss predicts (i.e., proportional declines in N mass from initial quantity)
-N.loc1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15), method = "REML", family = Gamma(link = "inverse"))
-
-#simple mass loss model + random slope
-N.loc.2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-N.loc.3 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + ti(Mass_per_loss, initial_N) + s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-#base model + random intercept - in some ways this doesn't make sense because intercept should be 1
-N.loc.ri <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(initial_N) + ti(Mass_per_loss, initial_N, k = 16) + s(series_index, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-#base model + random slope - allows sereies-to-series variation in relationship between predictor and N mass, captures autocorr, probably most appropriate model
-N.loc.rs <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) + ti(Mass_per_loss, initial_N, k = 16) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-# base model + random slope&intercept - random intercept still may be inappropriate given the data structure
-N.loc.rsi <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) + ti(Mass_per_loss, initial_N) + s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"))
-
-
-
-
-
-
-
-AIC(N.loc, N.loc.ri,N.loc.rs,N.loc.rsi)
-
-gam_pred<-predict_gam(N.loc.rs, exclude_terms = "s(series_index,Mass_per_loss)",  values = list(initial_N = c(0.4,0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
-
-
-  ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_point(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
+ N.loc.rs.p
   
-  gam_pred1<-predict_gam(N.loc.rsi, exclude_terms = c("s(series_index)", "s(series_index,Mass_per_loss)"),  values = list(initial_N = c(0.4, 0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
-
-
-  ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
-    geom_point(data = gam_pred1, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
-  
-    gam_pred2<-predict_gam(N.loc, values = list(initial_N = c(0.4, 0.6,0.8, 1,1.5,2.0,2.5)))%>% mutate(initial_N = as_factor(initial_N))
-
-
-  ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
-    geom_point(data = gam_pred2, aes(x = Mass_per_loss, y = 1/fit))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
-  
-  summary(N.loc.gam)
-  appraise(N.loc.gam)
-  k.check(N.loc.gam)
-  draw(N.loc.gam1)
-   summary(N.loc.gam1)
-  appraise(N.loc.gam1)
-  k.check(N.loc.gam1)
-  draw(N.loc.gam2)
-     summary(N.loc.gam2)
-  appraise(N.loc.gam2)
-  k.check(N.loc.gam2)
-
 ```
- No evidence for initial N being a strong predictor of these Lotic-Coarse curves - N mass a function of mass loss alone, but strong evidence of non-linearity. Residuals on N mass also quite decent
+Overall this model isn't too bad, and explains a lot of variation, ~90%. It also suggests that N loss is non-linear, though it doesn't seem super wiggly when plotted.
+
+We can check if mass category is potentially causing interpretation problems.The main way to handle this is as a factor-smooth interaction between mass loss and mass category (can't use random effects because only two levels of mass category - need ~5 to be reliable)
+```{r Lotic-Coarse Check Mass category problems}
+
+N.loc.rs2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re") + s(Remain_Mass_Category, Mass_per_loss, bs = "fs"), method = "REML", family = Gamma(link = "inverse"))
+summary(N.loc.rs2)
+appraise(N.loc.rs2)
+k.check(N.loc.rs2)
+#can't draw() with factor like this
+
+
+gam_pred<-predict_gam(N.loc.rs2, exclude_terms = "s(series_index,Mass_per_loss)")
+ N.loc.rs2.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    facet_grid(.~Remain_Mass_Category)+
+    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.loc.rs2.p
+  
+AIC(N.loc.rs,N.loc.rs2)
+```
+There's good reason to suspect that Mass category affects these curves - factor smooth term is significant, and a substantial reduction in AIC on model comparison. Looking at the plotted curves, DM curves tend to lose proportionally less N through time. My guess is that's a function of mass loss being underestimated at those time points in comparison to AFDM - this may be a signal from inorganic matter becoming an increasingly larger proportion of mass throughout decomposition (i.e., the x axis doesn't mean the same thing on tehse two plots). The good news is now we can retain this in our models to 1. control for it or 2. see if that signal can actually be explained by something else. 
 
  
 ## N Mass lotic exploratory modeling
- So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends. Additionally, we can also tell lots of non-linearity gets picked up by mass loss as single predictor, so we don't consider additional tensor-smooth interactions in our exploratory modeling.
+ So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends. Additionally, we can also tell lots of non-linearity gets picked up by mass loss as single predictor, so we don't consider additional tensor-smooth interactions in our exploratory modeling. We want to keep our random effects and 
  
  Exogenous, endogenous, and methodological exploratory models informed combination models 
  
