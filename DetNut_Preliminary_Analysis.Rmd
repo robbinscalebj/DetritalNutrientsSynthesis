@@ -18,7 +18,7 @@ library(tidymv)
 ```{r data ingest}
 
 
-det_raw <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
+det_raw <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
 
 ```
 
@@ -185,12 +185,77 @@ There's good reason to suspect that Mass category affects these curves - factor 
  
  Exogenous, endogenous, and methodological exploratory models informed combination models 
  
-```{r Lotic Coarse exploratory models}
+```{r Lotic Coarse exploratory models - Ext TN}
 
 #ext vars = TP, TN, Velocity, Temp
 
-N.ext1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+N.ext1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) +s(Velocity_m.s) +s(TN_approx_avg) +s(Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
 
+N.ext2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s)  + ti(Mass_per_loss, Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext3 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) +  ti(Mass_per_loss, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext4 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Mass_per_loss, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext5 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Velocity_m.s, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext6 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext7 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext8 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Mass_per_loss, Velocity_m.s, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+AIC(N.ext1,N.ext2,N.ext3,N.ext4,N.ext5,N.ext6,N.ext7)
+
+#summary(N.ext1);
+summary(N.ext2);summary(N.ext3);summary(N.ext4);#summary(N.ext5);summary(N.ext6);summary(N.ext7);
+#appraise(N.ext3)
+
+#gam_pred<-predict_gam(N.ext4, exclude_terms = c("s(series_index,Mass_per_loss)", "s(Temperature_C)", "s(TN_approx_avg)"), values = list(Velocity_m.s = 0.3,0.1,0.4))
+ N.ext4.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    facet_grid(.~Remain_Mass_Category)+
+    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.loc.rs2.p
+```
+Models 2,3,4 come out with lowest AIC values, suggesting some level of interaction with Mass loss of TN, Velocity, or Temp could be important in shaping the curves of 
+
+```{r Lotic Coarse exploratory models - Ext TP}
+N.ext1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) +s(Velocity_m.s) +s(TN_approx_avg) +s(Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s)  + ti(Mass_per_loss, Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext3 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) +  ti(Mass_per_loss, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext4 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Mass_per_loss, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext5 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Velocity, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext6 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+N.ext7 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+
+```
+
+```{r Lotic Coarse exploratory models - Endo lig}
+
+```
+
+```{r Lotic Coarse exploratory models - Endo hemi}
+
+```
+
+```{r Lotic Coarse exploratory models - Endo phenol}
+
+```
+
+
+```{r Lotic Coarse exploratory models - Exo-Endo combined}
+
+```
 #N.extn variations = TP, velocity should also receive a separate model to investigate, e.g., its moderation (interaction) on Mass_per_loss
 
 N.end1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(initial_N) + s(initial_Lignin) + s(series_index, bs = "re"), method = "REML", family = Gamma(link="log"))
