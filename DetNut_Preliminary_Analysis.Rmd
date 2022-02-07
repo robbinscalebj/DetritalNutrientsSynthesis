@@ -143,114 +143,326 @@ appraise(N.loc.rs)
 draw(N.loc.rs)
 k.check(N.loc.rs)
 
-gam_pred<-predict_gam(N.loc.rs, exclude_terms = "s(series_index,Mass_per_loss)")
+gam_pred<-predict_gam(N.loc.rs, exclude_terms =  "s(series_index,Mass_per_loss)",length_out = 1000, values = list(series_index = NULL))
  N.loc.rs.p<- ggplot()+
   geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
+    geom_smooth(data = gam_pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit))+
     geom_abline(slope = -0.01, intercept = 1)+
     geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
     NULL
  N.loc.rs.p
   
 ```
-Overall this model isn't too bad, and explains a lot of variation, ~90%. It also suggests that N loss is non-linear, though it doesn't seem super wiggly when plotted.
+Overall this model isn't too bad, and explains a lot of variation, ~90%, but that's really inflated by inclusion of random effects. It also suggests that N loss is non-linear, though it doesn't seem super wiggly when plotted.
 
 We can check if mass category is potentially causing interpretation problems.The main way to handle this is as a factor-smooth interaction between mass loss and mass category (can't use random effects because only two levels of mass category - need ~5 to be reliable)
 ```{r Lotic-Coarse Check Mass category problems}
 
-N.loc.rs2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re") + s(Remain_Mass_Category, Mass_per_loss, bs = "fs"), method = "REML", family = Gamma(link = "inverse"))
+N.loc.rs2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss, k = 15) + s(series_index, Mass_per_loss, bs = "re") + s(Remain_Mass_Category, Mass_per_loss, bs = "fs"), select= TRUE, method = "REML", family = Gamma(link = "log"))
 summary(N.loc.rs2)
 appraise(N.loc.rs2)
 k.check(N.loc.rs2)
 #can't draw() with factor like this
 
 
-gam_pred<-predict_gam(N.loc.rs2, exclude_terms = "s(series_index,Mass_per_loss)")
+gam_pred<-predict_gam(N.loc.rs2, exclude_terms = c("s(series_index,Mass_per_loss)","s(Remain_Mass_Category, Mass_per_loss)"),values = list(series_index = NULL))
  N.loc.rs2.p<- ggplot()+
   geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
+    geom_smooth(data = gam_pred, se= FALSE, aes(x = Mass_per_loss, y = 1/fit))+
     geom_abline(slope = -0.01, intercept = 1)+
-    facet_grid(.~Remain_Mass_Category)+
-    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    #facet_grid(.~Remain_Mass_Category)+
+    #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
     NULL
 N.loc.rs2.p
   
 AIC(N.loc.rs,N.loc.rs2)
 ```
-There's good reason to suspect that Mass category affects these curves - factor smooth term is significant, and a substantial reduction in AIC on model comparison. Looking at the plotted curves, DM curves tend to lose proportionally less N through time. My guess is that's a function of mass loss being underestimated at those time points in comparison to AFDM - this may be a signal from inorganic matter becoming an increasingly larger proportion of mass throughout decomposition (i.e., the x axis doesn't mean the same thing on tehse two plots). The good news is now we can retain this in our models to 1. control for it or 2. see if that signal can actually be explained by something else. 
+There's good reason to suspect that Mass category affects these curves - factor smooth term is significant, and a substantial reduction in AIC on model comparison. Looking at the plotted curves, DM curves tend to lose proportionally less N through time. My guess is that's a function of mass loss being underestimated at those time points in comparison to AFDM - this may be a signal from inorganic matter becoming an increasingly larger proportion of mass throughout decomposition (i.e., the x axis doesn't mean the same thing between dm and afdm samples). The good news is now we can retain this in our models to 1. 'control' for it. 
 
  
 ## N Mass lotic exploratory modeling
- So what might explain some of the variation during mass loss? We can keep these models relatively simple for two primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, and 2) The more covariates included in a single model, the fewer observations from which to estimate effects. We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends. Additionally, we can also tell lots of non-linearity gets picked up by mass loss as single predictor, so we don't consider additional tensor-smooth interactions in our exploratory modeling. We want to keep our random effects and 
+ So what might explain some of the variation during mass loss? We can keep these models relatively simple for three primary reasons: 1) Interactions in GAMs may become intractable and difficult to interpret, 2) The more covariates included in a single model, the fewer observations from which to estimate effects (this also presents problems for model selection, 3) within endogenous and exogenous categories, covariates might be correlated (e.g., initial_N and initial_Lignin are correlated). We simply have to be careful about how we interpret the significance here - it is exploratory modeling into 'global'-level trends. Our focus is on how curves change along Mass Loss, so this is fundamentally a question about tensor smooth interactions (i.e., interactions between mass loss and a covariate on the response variable; ti(Mass_per_loss, Covariate)). We will avoid three-way tensor interactions. Honestly this largely turns into a bivariate correlational analysis that controls for random slopes/group correlation and methodological (dm vs afdm measures) constraints - that is, we're just looking for how N mass curves are affected by single exogenous and endogenous factors, and I think that's fine. 
+ 
+ Model structures are constrained to fitting random slope/intercept (except: 1) if not possible/too complex for data, 2) redundancy with intercept)
+ Model selection is based on satisfying residuals and comparing AIC values - comparing models with different distributional assumptions only. Sensible options include Gamma and gaussian/normal distros, with log, inverse, and identity links - so comparing 6 models for each covariate
+ Model inference is based on p values (note select = TRUE option) of explored covariates, and plots of model predictions
  
  Exogenous, endogenous, and methodological exploratory models informed combination models 
  
-```{r Lotic Coarse exploratory models - Ext TN}
+ We should quickly plot histograms of our covariates just to understand their variation. I'm not aware of reasons to transform covariates (as opposed to the response, which we handle by changing the distributional assumption in the model), but interesting to look at these
+ 
+```{r Histogram covariates}
+ggplot(data = det_loc, aes(x = Velocity_m.s))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = Temperature_C))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = TN_approx_avg))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = TP_approx_avg))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = log(TN_approx_avg/TP_approx_avg)))+
+  geom_histogram()
 
-#ext vars = TP, TN, Velocity, Temp
 
-N.ext1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) +s(Velocity_m.s) +s(TN_approx_avg) +s(Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+ggplot(data = det_loc, aes(x = initial_N))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = initial_P))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = initial_Lignin))+
+  geom_histogram()
+ggplot(data = det_loc, aes(x = (initial_N/initial_P)*(31/14)))+
+  geom_histogram()
 
-N.ext2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s)  + ti(Mass_per_loss, Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+ggplot(data = det_loc, aes(x = Ergosterol_ug.g))+
+  geom_histogram()
+ 
+```
 
-N.ext3 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) +  ti(Mass_per_loss, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+```{r Lotic Coarse exploratory models - Endo models}
 
-N.ext4 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Mass_per_loss, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+#modeling initial_N as fixed effect or series_index as random intercept = equivalent models. 
+N.end.n1 <- gam(data = det_loc, N_mass_norm ~  te(initial_N,Mass_per_loss, m = 2) + te(initial_N,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "identity"),select = TRUE) 
 
-N.ext5 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Velocity_m.s, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+N.end.n2 <- gam(data = det_loc, N_mass_norm ~  te(initial_N,Mass_per_loss, m = 2) + te(initial_N,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
-N.ext6 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
 
-N.ext7 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+N.end.n3 <- gam(data = det_loc, N_mass_norm ~  te(initial_N,Mass_per_loss, m = 2) + te(initial_N,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-N.ext8 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Mass_per_loss, Velocity_m.s, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
+N.end.n4 <- gam(data = det_loc, N_mass_norm ~  te(initial_N,Mass_per_loss, m = 2) + te(initial_N,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "identity"),select = TRUE) 
 
-AIC(N.ext1,N.ext2,N.ext3,N.ext4,N.ext5,N.ext6,N.ext7)
+N.end.n5 <- gam(data = det_loc, N_mass_norm ~  te(initial_N,Mass_per_loss, m = 2) + te(initial_N,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
 
-#summary(N.ext1);
-summary(N.ext2);summary(N.ext3);summary(N.ext4);#summary(N.ext5);summary(N.ext6);summary(N.ext7);
-#appraise(N.ext3)
+N.end.n6 <- gam(data = det_loc, N_mass_norm ~  te(initial_N,Mass_per_loss, m = 2) + te(initial_N,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "log"),select = TRUE) 
 
-#gam_pred<-predict_gam(N.ext4, exclude_terms = c("s(series_index,Mass_per_loss)", "s(Temperature_C)", "s(TN_approx_avg)"), values = list(Velocity_m.s = 0.3,0.1,0.4))
- N.ext4.p<- ggplot()+
+
+N.end.names <- list(N.end.n1, N.end.n2, N.end.n3,N.end.n4,N.end.n5,N.end.n6)
+map(N.end.names, ~AIC(.)) #2 best by AIC, next is 3
+map(N.end.names, ~appraise(.))  #residuals a bit heterscedastic on all
+map(N.end.names, ~k.check(.)) #all good
+map(N.end.names, ~summary(.)) #Best model has a significant ti term. Second best model has very weak ti term, and not very different from the average trend along mass loss.All other models have sig ti terms
+
+gam_pred_ni<-predict_gam(type = "link", N.end.n2, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.5,0.8,1.1,1.4,1.7,2.0)))%>%
+  mutate(initial_N = as_factor(initial_N))
+
+ N.ni.p<- ggplot()+
   geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = gam_pred, aes(x = Mass_per_loss, y = 1/fit))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    facet_grid(.~Remain_Mass_Category)+
-    geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    geom_smooth(data = gam_pred_ni,se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
+    #geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(initial_N~.)+
+    #geom_ribbon(data = gam_pred_ni, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit - 2*se.fit)), alpha = 0.3)+
     NULL
-N.loc.rs2.p
-```
-Models 2,3,4 come out with lowest AIC values, suggesting some level of interaction with Mass loss of TN, Velocity, or Temp could be important in shaping the curves of 
+ N.ni.p
+ 
+ #best model suggests that N is lost somewhat more quickly in higher initial N litters compared to lower. 
 
-```{r Lotic Coarse exploratory models - Ext TP}
-N.ext1 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) +s(Velocity_m.s) +s(TN_approx_avg) +s(Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
-
-N.ext2 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s)  + ti(Mass_per_loss, Temperature_C)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
-
-N.ext3 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) +  ti(Mass_per_loss, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
-
-N.ext4 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Mass_per_loss, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
-
-N.ext5 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Velocity, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
-
-N.ext6 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, TN_approx_avg)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
-
-N.ext7 <- gam(data = det_loc, N_mass_norm ~ s(Mass_per_loss) + s(Temperature_C) + s(TN_approx_avg) +s(Velocity_m.s) + ti(Temperature_C, Velocity_m.s)+ s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link="inverse"))
 
 ```
 
-```{r Lotic Coarse exploratory models - Endo lig}
+ 
+ 
+```{r Velocity analysis}
+N.vel1 <- gam(data = det_loc, N_mass_norm ~  s(Mass_per_loss) + ti(Velocity_m.s,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "identity"),select = TRUE) 
+
+N.vel2 <- gam(data = det_loc, N_mass_norm ~  s(Mass_per_loss) + ti(Velocity_m.s,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+
+N.vel2b <- gam(data = det_loc, N_mass_norm ~  s(Mass_per_loss) + t2(Velocity_m.s,Mass_per_loss,Remain_Mass_Category, bs = c("tp", "tp","re"))  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+
+N.vel3 <- gam(data = det_loc, N_mass_norm ~  s(Mass_per_loss) + ti(Velocity_m.s,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "log"),select = TRUE) 
+
+N.vel4 <- gam(data = det_loc, N_mass_norm ~  s(Mass_per_loss) + ti(Velocity_m.s,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "identity"),select = TRUE) 
+
+N.vel5 <- gam(data = det_loc, N_mass_norm ~   s(Mass_per_loss) + ti(Velocity_m.s,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+
+N.vel6 <- gam(data = det_loc, N_mass_norm ~   s(Mass_per_loss) + ti(Velocity_m.s,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+
+N.vel.names <- list(N.vel1, N.vel2, N.vel3,N.vel4,N.vel5,N.vel6) #
+map(N.vel.names, ~AIC(.)) #3 best AIC, then 2
+map(N.vel.names, ~appraise(.)) # residuals a bit heteroscedastic, but not much to be done
+map(N.vel.names, ~k.check(.)) # these are pretty data limited, k.check indicates problems with some predictors, but can't improve
+map(N.vel.names, ~summary(.)) # Most models suggested ti was significant predictor
+
+#Velocity plot
+gam_pred_vel1<-predict_gam(type = "link", N.vel2b, length_out = 1000, exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)", "s(Remain_Mass_Category, Mass_per_loss)"), values = list(Mass_Remain_Category = NULL, series_index = NULL, Velocity_m.s = c(0.05,0.1,0.2)))%>%
+  mutate(Velocity_m.s = as_factor(Velocity_m.s))
+
+
+ N.vel.p1<- ggplot()+
+  geom_point(data = det_loc%>%filter(!is.na(Velocity_m.s))%>%mutate(discrete = factor(cut(Velocity_m.s, seq(0.025,0.3,by = 0.08)))), aes(Mass_per_loss, N_mass_norm, color = discrete), alpha = 0.3)+
+    geom_smooth(data = gam_pred_vel1, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = Velocity_m.s))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(velocity_m.s~tN_approx_avg)+
+    #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.vel.p1
+
+#best model seems to suggest there are differences early on in N mass loss, with slower velocities accumulating more N. Data may be limiting in detecting the functional form of the relationship later in decomposition
 
 ```
 
-```{r Lotic Coarse exploratory models - Endo hemi}
+
+
+```{r Temp analysis}
+N.temp1 <- gam(data = det_loc, N_mass_norm ~  s(Temperature_C) + s(Mass_per_loss) + ti(Temperature_C,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "identity"),select = TRUE) 
+
+N.temp2 <- gam(data = det_loc, N_mass_norm ~   te(Temperature_C,Mass_per_loss, m = 2) + te(Temperature_C,Mass_per_loss,by=Remain_Mass_Category) +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+
+N.temp2a <- gam(data = det_loc, N_mass_norm ~  s(Mass_per_loss) + ti(Temperature_C,Mass_per_loss, m = 2) + ti(Temperature_C,Mass_per_loss,by=Remain_Mass_Category)  +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+
+
+
+N.temp3 <- gam(data = det_loc, N_mass_norm ~  s(Temperature_C) + s(Mass_per_loss) + ti(Temperature_C,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "log"),select = TRUE) 
+
+N.temp4 <- gam(data = det_loc, N_mass_norm ~  s(Temperature_C) + s(Mass_per_loss) + ti(Temperature_C,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "identity"),select = TRUE) 
+
+N.temp5 <- gam(data = det_loc, N_mass_norm ~  s(Temperature_C) + s(Mass_per_loss) + ti(Temperature_C,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+
+N.temp6 <- gam(data = det_loc, N_mass_norm ~  s(Temperature_C) + s(Mass_per_loss) + ti(Temperature_C,Mass_per_loss)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+
+N.temp.names <- list(N.temp1, N.temp2, N.temp3,N.temp4,N.temp5,N.temp6)
+map(N.temp.names, ~AIC(.)) #2 best AIC, then 3
+map(N.temp.names, ~appraise(.)) # residuals mostly heteroscedastic, not much to be done
+map(N.temp.names, ~k.check(.)) # these are pretty data limited, k.check indicates problems with some predictors, but can't improve
+map(N.temp.names, ~summary(.)) # almost all models, ti not significant
+
+#Velocity plot
+gam_pred_temp1<-predict_gam(type = "link", N.temp2b, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)", "s(Remain_Mass_Category, Mass_per_loss)"), values = list(Mass_Remain_Category = NULL, series_index = NULL, Temperature_C = c(8,13,20)))%>%
+  mutate(Temperature_C = as_factor(Temperature_C))
+
+ N.temp.p1<- ggplot()+
+  geom_point(data = det_loc%>%filter(!is.na(Temperature_C)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = gam_pred_temp1, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = Temperature_C))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(velocity_m.s~tN_approx_avg)+
+   # geom_ribbon(data = gam_pred_temp1, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.temp.p1
 
 ```
 
-```{r Lotic Coarse exploratory models - Endo phenol}
+```{r TN analysis}
+
+N.ext.tn <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TN_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link = "inverse"))
+
+N.ext.tn1 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TN_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link = "identity"))
+
+N.ext.tn2 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TN_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, bs = "re")  +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link="log"))
+
+N.ext.tn3 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TN_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = gaussian(link="inverse"))
+
+N.ext.tn4 <- gam(data = det_loc, N_mass ~ ti(Mass_per_loss, TN_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = gaussian(link="log"))
+
+N.ext.tn5 <- gam(data = det_loc, N_mass ~ ti(Mass_per_loss, TN_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = gaussian(link="identity"))
+
+AIC(N.ext.tn, N.ext.tn1, N.ext.tn2,N.ext.tn3,N.ext.tn4,N.ext.tn5) #model 2 clear by AIC, residuals not bad
+
+N.ext.tp <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TP_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link = "inverse"))
+
+N.ext.tp1 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TP_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link = "identity"))
+
+N.ext.tp2 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TP_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link="log"))
+
+N.ext.tp3 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TP_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = gaussian(link="inverse"))
+
+N.ext.tp4 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, TP_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = gaussian(link="log"))
+
+N.ext.tp5 <- gam(data = det_loc, N_mass ~ ti(Mass_per_loss, TP_approx_avg)  +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re") +s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = gaussian(link="identity"))
+
+AIC(N.ext.tp, N.ext.tp1, N.ext.tp2,N.ext.tp3,N.ext.tp4,N.ext.tp5) #N.ext.tp 4 favored by AIC, residuals OK, next best model tp2/tp3, inferences are not different based on any of those models
+
+
+
+
+
+
+#Temp plot
+
+gam_pred_temp<-predict_gam(type = "link", N.ext.temp2,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)", "s(Remain_Mass_Category, Mass_per_loss)"), values = list(series_index = NULL, Temperature_C = c(8,13,20)))%>%
+  mutate(Temperature_C = as_factor(Temperature_C))
+
+ N.temp.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
+    geom_smooth(data = gam_pred_temp, aes(x = Mass_per_loss, y = exp(fit), color = Temperature_C))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(velocity_m.s~tN_approx_avg)+
+    #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.temp.p
+
+#plot_smooths(N.ext.temp2, exclude_terms = c("s(Remain_Mass_Category, Mass_per_loss)")) #exclude_random = TRUE by default
+
+#TN plot
+
+gam_pred_tn<-predict_gam(type = "link", N.ext.tn2,  exclude_terms = c( "s(series_index)", "s(series_index, Mass_per_loss)", "s(Remain_Mass_Category, Mass_per_loss)"), values = list(series_index = NULL, TN_approx_avg = c(200,1000,2000,5000)))%>%
+  mutate(TN_approx_avg = as_factor(TN_approx_avg))
+
+ N.tn.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
+    geom_smooth(data = gam_pred_tn, aes(x = Mass_per_loss, y = exp(fit), color = TN_approx_avg))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(velocity_m.s~tN_approx_avg)+
+    #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.tn.p
+
+
+
+gam_pred_tp<-predict_gam(type = "link", N.ext.tp4,  exclude_terms = c("s(initial_N", "s(series_index)", "s(series_index, Mass_per_loss)", "s(Remain_Mass_Category, Mass_per_loss)"), values = list(series_index = NULL, TP_approx_avg = c(10,50,100,400)))%>%
+  mutate(TP_approx_avg = as_factor(TP_approx_avg))
+
+ N.tp.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
+    geom_smooth(data = gam_pred_tp, aes(x = Mass_per_loss, y = exp(fit), color = TP_approx_avg))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(velocity_m.s~tN_approx_avg)+
+    #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.tp.p
+```
+
+
+
+
+
+
+```{r}
+#Lignin models
+#Note, we here again do not want to model the main effect of initial_Lignin, because the intercept is defined by initial_N. however, there can be differences in the mean initial_N mean of different series if they're grouped by, say, lignin. 
+
+N.end.lig <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, bs = "re")+s(series_index, Mass_per_loss, bs = "re")  , method = "REML", family = Gamma(link = "log"))#everything intersects in the middle at single point 
+
+N.end.lig2 <- gam(data = det_loc, N_mass ~  s(initial_Lignin) + ti(Mass_per_loss, initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs") +s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "log"))#everything intersects in the middle at single point, had to get rid of random intercept 
+
+N.end.lig3 <- gam(data = det_loc, N_mass ~  s(initial_Lignin) + ti(Mass_per_loss, initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs"), method = "REML", family = Gamma(link = "log"))#everything intersects in the middle at single point, had to get rid of random slope
+
+N.end.lig4 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, Mass_per_loss, bs = "re") , method = "REML", family = Gamma(link = "log"))#everything intersects in the middle at single point, had to get rid of random intercept
+
+N.end.lig5 <- gam(data = det_loc, N_mass ~  ti(Mass_per_loss, initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+
+N.end.lig6 <- gam(data = det_loc, N_mass ~  s(Mass_per_loss) +  s(initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+
+N.end.lig7 <- gam(data = det_loc, N_mass ~  s(initial_Lignin) +s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log"))
+
+N.end.lig8 <- gam(data = det_loc, N_mass ~  s(initial_Lignin) + ti(Mass_per_loss, initial_Lignin)+s(Remain_Mass_Category, Mass_per_loss, bs = "fs")+s(series_index, bs = "re"), method = "REML", family = Gamma(link = "log")) #random slope with intercept won't fit
+
+AIC(N.end.lig, N.end.lig2, N.end.lig3, N.end.lig4, N.end.lig5, N.end.lig6,N.end.lig7,N.end.lig8) #N.end.lig slightly favored over N.end.lig5 and lig8, and appraise() check is pretty equivalenty between the two models
+
+gam_pred_lig<-predict_gam(type = "link", N.end.lig6,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)", "s(Remain_Mass_Category, Mass_per_loss)"), values = list(series_index = NULL, initial_Lignin = c(2.5,5,10,15,25,40)))%>%
+  mutate(initial_Lignin = as_factor(initial_Lignin))
+
+ N.lig.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass), alpha = 0.3)+
+    geom_smooth(data = gam_pred_lig, aes(x = Mass_per_loss, y = exp(fit), color = initial_Lignin))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #facet_grid(velocity_m.s~tN_approx_avg)+
+    #geom_ribbon(data = gam_pred, aes(x = Mass_per_loss, ymin = 1/(fit -2*se.fit), ymax = 1/(fit +2*se.fit)), alpha = 0.3)+
+    NULL
+N.lig.p
 
 ```
+
+
 
 
 ```{r Lotic Coarse exploratory models - Exo-Endo combined}
