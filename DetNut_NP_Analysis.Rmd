@@ -19,7 +19,7 @@ library(tidymv)
 ```{r data ingest}
 
 
-det_raw <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
+det_raw <- read_csv("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
 
 ```
 
@@ -132,6 +132,8 @@ The overall analysis plan is this: For each response variable (Normalized N or P
 
 We always want to control for group-specific variation, which we do with random slope/intercept terms. The random intercept doesn't make sense for response variables where the intercepts are all defined as 1 (and so each series starts at 1) or where one of the covariates defines a time series' intercept (e.g., response N% and covariate initial N %). 
 
+EDIT: INFERENCE IS BASICALLY STUCK ON JUST USING PVALUES AFTER COMPARING MODELS FOR RANDOM EFFECTS STRUCTURE - CAN'T USE aic WHEN SAMPLE SIZES ARE MISMATCHED
+
 Inference will be based on comparing (AIC, plus residual and k-value checks) two sets of models for each covariate explored. This should work for two reasons: 1) P values are approximate with GAMs, though still useful, and interpreting whether a more complex model is 'better' or 'worse' than a lower level nested model in this case is more robust by also adding in AIC, 2) Keeping the number of terms down in the model is ideal (don't have to worry about including/not including main effects in the correct way). The first set of models for any given covariate will be compared on the same fixed effects structure, but with varying  distributional assumptions. The best model from that tranche will then be compared to a base model (the first that will be defined below), which only models trends of the response variable along Mass loss, controlling for differences due to Remaining Mass Category (Afdm vs DM; preliminary analysis showed these were fairly different and it will be important to account for them). 
 
 There are very few afdm measurements from lentic sites and that creates a substantial problem for analysis in this way. There's simply not enough data even to fit a base model well (at least accounting for afdm/dm differences which can be done differently in a simpler analysis ---), so lentic data need to be analyzed with a simpler, less robust modeling approach, which is fine. But the focus can be on the lotic data.
@@ -151,27 +153,33 @@ For each of these models, we can choose distributional assumptions via AIC/resid
 
 N_base_loc1 <- gam(data = det_loc, N_mass_norm ~  
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "identity"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "identity"),select = TRUE) 
 
 N_base_loc2 <- gam(data = det_loc, N_mass_norm ~  
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
 N_base_loc3 <- gam(data = det_loc, N_mass_norm ~  
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "log"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
 N_base_loc4 <- gam(data = det_loc, N_mass_norm ~  
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "identity"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "identity"),select = TRUE) 
 
 N_base_loc5 <- gam(data = det_loc, N_mass_norm ~  
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"),
+                   method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
 
 N_base_loc6 <- gam(data = det_loc, N_mass_norm ~  
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "log"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
 
 
 
@@ -187,7 +195,7 @@ map(base_loc_names, ~AIC(.))
 map(base_loc_names, ~appraise(.))
 map(base_loc_names, ~summary(.))
 
-base_loc_mod <- N_base_loc2 #easier name to remember for later comparisons
+base_loc_mod <- N_base_loc2 #set best model to easier name to remember for later comparisons
 
 
 #plot predictions
@@ -209,48 +217,81 @@ base_loc.pred<-predict_gam(type = "link", base_loc_mod, length_out = 5000,  excl
 ```
 When we're trying to ignore the differences in mass category, we'll sort of ignore this. But note the pretty significant differences here. DM samples really seem to have elevated N mass in later decomp compared to afdm samples. That's an interesting result in itself, but maybe more for a pure mass loss focused study (which we should totally do), but emphasis here is on controlling for that issue to explore N and P time series.
 
-Now we can build up models from our base model. 
+Now we can build up models from our base model to explore how the following factors influence N mass trends:
+Initial N
+Initial Lignin
+Ergosterol
+Temp
+velocity
+TN
+TP
+
+
+For some of these factors, our models will basically be intractable, and we'll have to adjust our analysis or ignore the potential effect. That's fine in exploratory work, just have to keep tabs on it. 
 
 #Exploratory analysis
 ```{r N mass vs initial N}
 N_Ni1 <- gam(data = det_loc, N_mass_norm ~  
                         ti(Mass_per_loss, initial_N)+
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "identity"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
 
 N_Ni2 <- gam(data = det_loc, N_mass_norm ~
                 ti(Mass_per_loss, initial_N)+
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
 N_Ni3 <- gam(data = det_loc, N_mass_norm ~  
                 ti(Mass_per_loss, initial_N)+
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = gaussian(link = "log"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
 N_Ni4 <- gam(data = det_loc, N_mass_norm ~  
                 ti(Mass_per_loss, initial_N)+
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "identity"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
 
 N_Ni5 <- gam(data = det_loc, N_mass_norm ~  
                 ti(Mass_per_loss, initial_N)+
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
 
 N_Ni6 <- gam(data = det_loc, N_mass_norm ~  
                 ti(Mass_per_loss, initial_N)+
                         t2(Mass_per_loss,Remain_Mass_Category, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), method = "REML", family = Gamma(link = "log"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = Gamma(link = "log"),select = TRUE) 
 
 Ni_mod_names <- list(N_Ni1, N_Ni2,N_Ni3,N_Ni4,N_Ni5,N_Ni6)
-map(Ni_mod_names, ~AIC(.)) #2 clear best by AIC
-map(Ni_mod_names, ~appraise(.)) #2 less more homoscedastic than others, 5 probably best resids
+map(Ni_mod_names, ~AIC(.)) #2 clear best by AIC -995, with 
+map(Ni_mod_names, ~appraise(.)) #2 less more homoscedastic than others, 5 probably best resids, we can check both summaries for any real differences
 
 summary(N_Ni2)
-summary(N_Ni5)
+summary(N_Ni5) #not huge differences in our conclusions here via pvalues
 
-AIC(base_loc_mod, N_Ni2, N_Ni5)
+AIC(base_loc_mod, N_Ni2, N_Ni5) #however there is a slight reduction in AIC compared to Base model with Ni2, vs Ni5. 
+
+
+base_Ni_mod <- N_base_loc2 #set best model to easier name to remember for later comparisons
+
+
+#plot predictions
+base_loc.pred<-predict_gam(type = "link", base_loc_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL))
+
+
+ base_loc.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = base_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit))+
+   facet_grid(.~Remain_Mass_Category)+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
+    NULL
+ base_loc.p
 ```
 
 ```{r}
