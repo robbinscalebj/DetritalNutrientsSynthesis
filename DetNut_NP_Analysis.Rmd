@@ -644,53 +644,50 @@ Np_base2 <- gam(data = det_loc, N_per ~
              method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
 
-
-
 AIC(Np_base, Np_base2)
 map(list(Np_base,Np_base2), appraise)
 
-Np_Ni <- gam(data = det_loc, N_per ~  
-                        te(Mass_per_loss, initial_N)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+```
 
-Np_Ni.b <- gam(data = det_loc, N_per ~  
-                 initial_N+
-                        te(Mass_per_loss, initial_N)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
-Np_Ni.c <- gam(data = det_loc, N_per ~  
-                 initial_N+s(initial_N)+s(Mass_per_loss)+
-                        te(Mass_per_loss, initial_N)+
+```{r N per by initial N}
+
+
+
+Np_Ni1 <- gam(data = det_loc, N_prop_initial ~  
+                        te(Mass_per_loss, initial_N, m = 2)+
                         t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
                         s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+             method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-Np_Ni.d <- gam(data = det_loc, N_per ~  
-                 initial_N+s(initial_N)+s(Mass_per_loss)+
-                        te(Mass_per_loss, initial_N)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-#THIS TAKES LIKE TEN MINUTES
-Np_Ni.a <- gam(data = det_loc, N_per ~  
-                        ti(Mass_per_loss) +  ti(initial_N)+ti(Mass_per_loss, initial_N, m = 2)+
+Np_Ni2 <- gam(data = det_loc, N_prop_initial ~  
+                        te(Mass_per_loss, initial_N, m = 2)+
                         t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "REML", family = Gamma(link = "log"),select = TRUE) 
 
+Np_Ni3 <- gam(data = det_loc, N_prop_initial ~  
+                        te(Mass_per_loss, initial_N, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "ML", family = Gamma(link = "log"),select = TRUE) 
 
-base_Np_mod <- Np_Ni #set best model to easier name to remember for later comparisons
+Np_Ni4 <- gam(data = det_loc, N_prop_initial ~  
+                        ti(Mass_per_loss, initial_N, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+             method = "ML", family = Gamma(link = "log"),select = TRUE) 
+
+AIC(Np_Ni1, Np_Ni2)
+map(list(Np_Ni1, Np_Ni2), appraise)
+
+base_Np_mod <- Np_Ni4 #set best model to easier name to remember for later comparisons
 
 
 #plot predictions
 base_loc_Np.pred<-predict_gam(type = "link", base_Np_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL))
 
-Np_Ni.pred<-predict_gam(type = "link", base_Np_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,0.8,1.2,2)))%>%
-  mutate(initial_N = as_factor(initial_N))
+
 
 
  base_loc_Np.p<- ggplot()+
@@ -702,9 +699,12 @@ Np_Ni.pred<-predict_gam(type = "link", base_Np_mod, length_out = 5000,  exclude_
  base_loc_Np.p
  
  
+ Np_Ni.pred<-predict_gam(type = "link", base_Np_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,0.8,1.2,2)))%>%
+  mutate(initial_N = as_factor(initial_N))
+ 
   base_Np_Ni.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(N_per)), aes(Mass_per_loss, N_per), alpha = 0.3)+
-    geom_smooth(data = Np_Ni.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
+  geom_point(data = det_loc%>%filter(!is.na(N_per)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
+    geom_smooth(data = Np_Ni.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_N))+
     geom_abline(slope = -0.01, intercept = 1)+
     #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
     NULL
