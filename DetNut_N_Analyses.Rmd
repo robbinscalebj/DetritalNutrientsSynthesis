@@ -5,7 +5,7 @@ date: "2/5/2022"
 output: html_document
 ---
 
-
+##Setup and Data Trim
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
@@ -140,12 +140,13 @@ Note, there are very few afdm measurements from lentic sites and that creates a 
 
 
 #N mass models
-##Base initial N model
+##Base initial N models
 
 
-So, we'll create a base model with just mass loss as a predictor (plus accounting for effects of dm vs afdm differences, and random effects to take care of individual series-level correlation) to estimate a global tren
+So, we'll create a base model with just mass loss as a predictor (plus accounting for effects of dm vs afdm differences, and random effects to take care of individual series-level correlation) to estimate a global trend
 
 For each of these models, we can choose distributional assumptions via AIC/residuals
+
 ```{r Ni Distro comparison}
 
 Ni_1 <- gam(data = det_loc, N_mass_norm ~  
@@ -225,6 +226,7 @@ General process here is, for each environmental covariate
 
 For some of these factors, our models will basically be intractable, and we'll have to adjust our analysis or ignore the potential effect. That's fine in exploratory work, just have to keep tabs on it. 
 
+##N mass ~ Temperature
 
 ```{r N mass vs Temperature - Distro}
 
@@ -315,7 +317,7 @@ N_Ni_Tonly.pred<-predict_gam(type = "link", N_Ni_Tonly, length_out = 5000,  excl
 ```
 Interestingly, our MassXTemperature interaction is highly significant, but the plotted predictions really change almost nothing from the global smoother
 
-```{r N mass vs Temperature - full interaction}
+```{r N mass vs Temperature - initial/covar interaction}
 #N_Ni_T2 was best most complex model, no need to fit again, but copied here as reminder
 
 #N_Ni_T2 <- gam(data = det_loc, N_mass_norm ~  
@@ -483,9 +485,8 @@ N_Ni_Tonly.pred<-predict_gam(type = "link", N_Ni_TNonly, length_out = 5000,  exc
  summary(N_Ni_TNonly)
 
 ```
-Interestingly, our MassXTemperature interaction is highly significant, but the plotted predictions really change almost nothing from the global smoother
 
-```{r N mass vs TN - full interaction}
+```{r N mass vs TN - initial/covar interaction}
 #N_Ni_TN2 was best most complex model, no need to fit again, but form copied here as reminder
 
 #N_Ni_T2 <- gam(data = det_loc, N_mass_norm ~  
@@ -648,7 +649,7 @@ N_Ni_Tonly.pred<-predict_gam(type = "link", N_Ni_TNonly, length_out = 5000,  exc
 ```
 Interestingly, our MassXTemperature interaction is highly significant, but the plotted predictions really change almost nothing from the global smoother
 
-```{r N mass vs TP - full interaction}
+```{r N mass vs TP - initial/covar interaction}
 #N_Ni_TN2 was best most complex model, no need to fit again, but form copied here as reminder
 
 #N_Ni_T2 <- gam(data = det_loc, N_mass_norm ~  
@@ -687,7 +688,7 @@ N_Ni_TP2c <- gam(data = det_loc, N_mass_norm ~
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
-#model d doesn't make sense... no chance to decompose TP out...
+
 N_Ni_TP2d <- gam(data = det_loc, N_mass_norm ~  
                         te(Mass_per_loss, initial_N,TP_approx_avg, m = 2)+
                         t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
@@ -720,902 +721,12 @@ N_Ni_TP.pred<-predict_gam(type = "link", N_Ni_TP2b, length_out = 5000,  exclude_
 ```
 No significant effect of TP here.
 
-Do Velocity next, see if it'll fit. Lignin almost certainly won't
-
-
-############
-```{r N mass vs initial Lignin}
-N_Li1 <- gam(data = det_loc, N_mass_norm ~  
-                        te(Mass_per_loss, initial_Lignin)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-N_Li2 <- gam(data = det_loc, N_mass_norm ~
-                te(Mass_per_loss, initial_Lignin)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-N_Li3 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, initial_Lignin)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-N_Li4 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, initial_Lignin)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-N_Li5 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, initial_Lignin)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-N_Li6 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, initial_Lignin)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-Li_mod_names <- list(N_Li1, N_Li2,N_Li3,N_Li4,N_Li5,N_Li6)
-map(Li_mod_names, ~AIC(.)) #1,2,3 probably equivocal AIC, 2 slightly better than 1 or 3, by about 4
-map(Li_mod_names, ~appraise(.)) #2 maybe better on resids
-
-summary(N_Li2)#suggests this is not significant predictor
-
-
-
-base_Li_mod <- N_Li2 #set best model to easier name to remember for later comparisons
-
-
-#plot predictions
-base_loc_Li.pred<-predict_gam(type = "link", base_Li_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_Lignin = c(5,15,25,35)))%>%
-   mutate(initial_Lignin = as_factor(initial_Lignin))
-  
-
-
- base_loc_Li.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(initial_Lignin)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = base_loc_Li.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_Lignin))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    NULL
- base_loc_Li.p
-```
-We can conclude here there's really no discernible effect of initial_Lignin in our dataset. 
-
-```{r N mass vs Temperature}
-N_T1 <- gam(data = det_loc, N_mass_norm ~  
-                        te(Mass_per_loss, Temperature_C)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-N_T2 <- gam(data = det_loc, N_mass_norm ~
-                te(Mass_per_loss, Temperature_C)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-N_T3 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Temperature_C)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-N_T4 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Temperature_C)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-N_T5 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Temperature_C)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-N_T6 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Temperature_C)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-T_mod_names <- list(N_T1, N_T2,N_T3,N_T4,N_T5,N_T6)
-map(T_mod_names, ~AIC(.)) #2 clear best, then 3
-map(T_mod_names, ~appraise(.)) #2 maybe better on resids, none too great on heteroscedasticity
-
-summary(N_T2)#suggests Temp is not significant predictor
-
-
-
-base_T_mod <- N_T2 #set best model to easier name to remember for later comparisons
-
-
-#plot predictions
-base_loc_T.pred<-predict_gam(type = "link", base_T_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, Temperature_C = c(5,10,15,20)))%>%
-   mutate(Temperature_C = as_factor(Temperature_C))
-  
-
-
- base_loc_T.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(Temperature_C)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = base_loc_T.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = Temperature_C))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    NULL
- base_loc_T.p
- 
- 
-```
-No temperature effect supported here.
-
-```{r N mass vs TN}
-N_TN1 <- gam(data = det_loc, N_mass_norm ~  
-                        te(Mass_per_loss, TN_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-N_TN2 <- gam(data = det_loc, N_mass_norm ~
-                te(Mass_per_loss, TN_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-N_TN3 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TN_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-N_TN4 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TN_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-N_TN5 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TN_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-N_TN6 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TN_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-TN_mod_names <- list(N_TN1, N_TN2,N_TN3,N_TN4,N_TN5,N_TN6)
-map(TN_mod_names, ~AIC(.)) #3 clear best, then 2,6
-map(TN_mod_names, ~appraise(.)) #2 maybe better on resids, none too great on heteroscedasticity
-
-summary(N_TN3)#suggests TN probably  not significant predictor
-
-
-
-base_TN_mod <- N_TN3.a #set best model to easier name to remember for later comparisons
-
-
-#plot predictions
-base_loc_TN.pred<-predict_gam(type = "link", base_TN_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, TN_approx_avg = c(250,750,1500)))%>%
-   mutate(TN_approx_avg = as_factor(TN_approx_avg))
-  
-
-
- base_loc_TN.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(TN_approx_avg)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = base_loc_TN.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = TN_approx_avg))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    NULL
- base_loc_TN.p
- 
- 
-```
-
-```{r N mass vs TP}
-N_TP1 <- gam(data = det_loc, N_mass_norm ~  
-                        te(Mass_per_loss, TP_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-N_TP2 <- gam(data = det_loc, N_mass_norm ~
-                te(Mass_per_loss, TP_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-N_TP3 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TP_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-
-N_TP4 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TP_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-N_TP5 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TP_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-N_TP6 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, TP_approx_avg)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-TP_mod_names <- list(N_TP1, N_TP2,N_TP3,N_TP4,N_TP5,N_TP6)
-map(TP_mod_names, ~AIC(.)) #3  best, then 2
-map(TP_mod_names, ~appraise(.)) #2 maybe better on resids, none too great on heteroscedasticity
-
-summary(N_TP3.a)#suggests TP might be sig. predictor
-
-
-
-base_TP_mod <- N_TP3.a #set best model to easier name to remember for later comparisons
-
-
-#plot predictions
-base_loc_TP.pred<-predict_gam(type = "link", base_TP_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, TP_approx_avg = c(50,100,200,300,500)))%>%
-   mutate(TP_approx_avg = as_factor(TP_approx_avg))
-  
-
-
- base_loc_TP.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(TP_approx_avg)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = base_loc_TP.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = TP_approx_avg))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    NULL
- base_loc_TP.p
- 
- 
-```
-
-
-
-```{r N mass vs Velocity}
-N_vel1 <- gam(data = det_loc, N_mass_norm ~  
-                        te(Mass_per_loss, Velocity_m.s)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-N_vel2 <- gam(data = det_loc, N_mass_norm ~
-                te(Mass_per_loss, Velocity_m.s)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-
-N_vel3 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Velocity_m.s)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2,bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-
-
-N_vel4 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Velocity_m.s)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-N_vel5 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Velocity_m.s)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-N_vel6 <- gam(data = det_loc, N_mass_norm ~  
-                te(Mass_per_loss, Velocity_m.s)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-vel_mod_names <- list(N_vel1, N_vel2,N_vel3,N_vel4,N_vel5,N_vel6)
-map(vel_mod_names, ~AIC(.)) #3  best, then 2
-map(vel_mod_names, ~appraise(.)) #2 maybe better on resids, none too great on heteroscedasticity
-
-summary(N_vel3)#suggests TP might be sig. predictor
-
-
-
-base_vel_mod <- N_vel3 #set best model to easier name to remember for later comparisons
-
-
-#plot predictions
-base_loc_vel.pred<-predict_gam(type = "link", base_vel_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, Velocity_m.s = c(0.1,0.2,0.4)))%>%
-   mutate(Velocity_m.s = as_factor(Velocity_m.s))
-  
-
-
- base_loc_vel.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(Velocity_m.s)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
-    geom_smooth(data = base_loc_vel.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = Velocity_m.s))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    NULL
- base_loc_vel.p
- 
- 
-```
-
-#Lotic N % analysis
-#N proportion models
-##Base initial N model
-
-
-So, we'll create a base model with just mass loss as a predictor (plus accounting for effects of dm vs afdm differences, and random effects to take care of individual series-level correlation) to estimate a global tren
-
-For each of these models, we can choose distributional assumptions via AIC/residuals
-```{r Ni Distro comparison}
-
-Nprop_Ni_1 <- gam(data = det_loc, N_prop_initial ~  
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m=2, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-Nprop_Ni_2 <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-Nprop_Ni_3 <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-Nprop_Ni_4 <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m=2,bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-Nprop_Ni_5 <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"),
-                   method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_6 <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m=2,bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-
-#model comparison and evaluation
-Ni_names<-list(Nprop_Ni_1,Nprop_Ni_2,Nprop_Ni_3,Nprop_Ni_4,Nprop_Ni_5,Nprop_Ni_6)
-map(Ni_names, ~AIC(.)) #best is 4 
-map(Ni_names, ~appraise(.)) #residuals OK
-summary(Nprop_Ni_4) 
-
-base_loc_mod <- Nprop_Ni_4 #set best model to easier name to remember for later comparisons
-
-
-#plot predictions
-base_loc.pred<-predict_gam(type = "link", base_loc_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_N = c(0.3,0.6,1.0,1.5,2.0,3,3.5)))%>%
-  mutate(initial_N = as_factor(initial_N))
-
-
- base_loc.p<- ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = base_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = fit, color = initial_N))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
- base_loc.p
-
- 
-
-
-```
-Very interesting contrast here with the N mass results - these lower initial N litters are not necessarily reaching a point where they are mineralizing. However, the N mass results definitely suggested some loss of N mass - maybe what's being exported 'down the freshwater pipe' as fragmented POM and FPOM is still fairly early decomposition material.
-
-
-##N prop ~ Temperature
-
-```{r N prop vs Temperature - Distro}
-
-#fit full model on multiple link functions, then compare potential fixed effect structures with AIC
-
-
-Nprop_Ni_T1 <- gam(data = det_loc, N_prop_initial ~  
-                 ti(initial_N,Temperature_C, m = 2)+   
-                 ti(Mass_per_loss,Temperature_C, m = 2)+  
-                 ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                 te(Mass_per_loss, initial_N, m = 2)+
-                 t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                 s(series_index, Mass_per_loss, bs = "re"), 
-               method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-Nprop_Ni_T2 <- gam(data = det_loc, N_prop_initial ~  
-                 ti(initial_N,Temperature_C, m = 2)+   
-                 ti(Mass_per_loss,Temperature_C, m = 2)+  
-                 ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                 te(Mass_per_loss, initial_N, m = 2)+
-                 t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                 s(series_index, Mass_per_loss, bs = "re"), 
-               method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_T3 <- gam(data = det_loc, N_prop_initial ~  
-                 ti(initial_N,Temperature_C, m = 2)+   
-                 ti(Mass_per_loss,Temperature_C, m = 2)+  
-                 ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                 te(Mass_per_loss, initial_N, m = 2)+
-                 t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                 s(series_index, Mass_per_loss, bs = "re") , 
-               method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-Nprop_Ni_T4 <- gam(data = det_loc, N_prop_initial ~  
-                 ti(initial_N,Temperature_C, m = 2)+   
-                 ti(Mass_per_loss,Temperature_C, m = 2)+  
-                 ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                 te(Mass_per_loss, initial_N, m = 2)+
-                 t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                 s(series_index, Mass_per_loss, bs = "re"), 
-               method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-Nprop_Ni_T5 <- gam(data = det_loc, N_prop_initial ~  
-                 ti(initial_N,Temperature_C, m = 2)+   
-                 ti(Mass_per_loss,Temperature_C, m = 2)+  
-                 ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                 te(Mass_per_loss, initial_N, m = 2)+
-                 t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                 s(series_index, Mass_per_loss, bs = "re"), 
-               method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_T6 <- gam(data = det_loc, N_prop_initial ~  
-                 ti(initial_N,Temperature_C, m = 2)+   
-                 ti(Mass_per_loss,Temperature_C, m = 2)+  
-                 ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                 te(Mass_per_loss, initial_N, m = 2)+
-                 t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                 s(series_index, Mass_per_loss, bs = "re"), 
-               method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-Ni_mod_names <- list(Nprop_Ni_T1, Nprop_Ni_T2,Nprop_Ni_T3,Nprop_Ni_T4,Nprop_Ni_T5,Nprop_Ni_T6)
-map(Ni_mod_names, ~AIC(.)) #2 best
-map(Ni_mod_names, ~appraise(.)) #2 pretty good looking
-
-```
-Take dsitributional assumption from mod 2 (gaussian with inverse link)
-```{r N prop vs Temperature - covar only}
-Nprop_Ni_Tonly <- gam(data = det_loc, N_prop_initial ~  
-                    te(Mass_per_loss, Temperature_C, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_Tonly.pred<-predict_gam(type = "link", Nprop_Ni_Tonly, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, Temperature_C = c(5,10,15,20)))%>%
-  mutate(Temperature_C = as_factor(Temperature_C))
-
-
-
-Nprop_Ni_Tonly.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(Temperature_C)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-  geom_smooth(data = Nprop_Ni_Tonly.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = Temperature_C))+
-  geom_abline(slope = -0.01, intercept = 1)+
-  NULL
-Nprop_Ni_Tonly.p
-
-summary(Nprop_Ni_Tonly)
-
-```
-Interaction non significant.
-
-```{r N prop vs Temperature - initial/covar interaction}
-#Nprop_Ni_T2 was best most complex model, no need to fit that full model again. Link function is Gaussian inverse
-
-  
-  Nprop_Ni_T2a <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N, Temperature_C, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_T2b <- gam(data = det_loc, N_prop_initial ~  
-                    ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_T2c <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,Temperature_C, m = 2)+    
-                    ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_T2d <- gam(data = det_loc, N_prop_initial ~  
-                    te(Mass_per_loss, initial_N,Temperature_C, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  
-  
-  
-  
-  map(list(Nprop_Ni_T2,Nprop_Ni_T2a,Nprop_Ni_T2b,Nprop_Ni_T2c,Nprop_Ni_T2d), AIC) #Nprop_Ni_T2 best
-  map(list(Nprop_Ni_T2,Nprop_Ni_T2a,Nprop_Ni_T2b,Nprop_Ni_T2c,Nprop_Ni_T2d), appraise)#, resids OK
-  
-  Nprop_Ni_T.pred<-predict_gam(type = "link", Nprop_Ni_T2, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,1.0,1.5,2.0),Temperature_C = c(5,10,15,20)))%>%
-    mutate(Temperature_C = as_factor(Temperature_C), initial_N = as_factor(initial_N))
-  
-  
-  
-  Nprop_Ni_T.p<- ggplot()+
-    #geom_point(data = det_loc%>%filter(!is.na(Temperature_C)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_T.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N, linetype = Temperature_C))+
-    facet_grid(initial_N~Temperature_C)+
-    geom_ribbon(data = Nprop_Ni_T.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    geom_abline(slope = -0.01, intercept = 1)+
-    ylim(c(0,5))+
-    NULL
-  Nprop_Ni_T.p
-  
-  summary(Nprop_Ni_T2)
-  
-```
-  In the low initial N litter, increasing temp tends to pull the N peak back toward a lower mass loss. It looks like it may go up toward the end (in the 20 C prediction) but the error bars are outrageous there. For the other initial N levels, increasing temperature is really just flattening the curves
-  
-  
-##N prop ~ TN
-```{r N prop vs TN - Distro}
-  
-  #fit full model on multiple link functions, then compare potential fixed effect structures with AIC
-  
-  
-  Nprop_Ni_TN1 <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,TN_approx_avg, m = 2)+   
-                    ti(Mass_per_loss,TN_approx_avg, m = 2)+  
-                    ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-  
-  Nprop_Ni_TN2 <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,TN_approx_avg, m = 2)+   
-                    ti(Mass_per_loss,TN_approx_avg, m = 2)+  
-                    ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_TN3 <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,TN_approx_avg, m = 2)+   
-                    ti(Mass_per_loss,TN_approx_avg, m = 2)+  
-                    ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re") , 
-                  method = "REML", family = gaussian(link = "log"),select = TRUE) 
-  
-  Nprop_Ni_TN4 <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,TN_approx_avg, m = 2)+   
-                    ti(Mass_per_loss,TN_approx_avg, m = 2)+  
-                    ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-  
-  Nprop_Ni_TN5 <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,TN_approx_avg, m = 2)+   
-                    ti(Mass_per_loss,TN_approx_avg, m = 2)+  
-                    ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_TN6 <- gam(data = det_loc, N_prop_initial ~  
-                    ti(initial_N,TN_approx_avg, m = 2)+   
-                    ti(Mass_per_loss,TN_approx_avg, m = 2)+  
-                    ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                    te(Mass_per_loss, initial_N, m = 2)+
-                    t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                    s(series_index, Mass_per_loss, bs = "re"), 
-                  method = "REML", family = Gamma(link = "log"),select = TRUE) 
-  
-  Ni_mod_names <- list(Nprop_Ni_TN1, Nprop_Ni_TN2,Nprop_Ni_TN3,Nprop_Ni_TN4,Nprop_Ni_TN5,Nprop_Ni_TN6)
-  map(Ni_mod_names, ~AIC(.)) #2 a bit better than 6
-  map(Ni_mod_names, ~appraise(.)) #2 better resids than 6
-  
-```
-  Take dsitributional assumption from mod 2 (gaussian with inverse link)
-```{r N prop vs TN - covar only}
-  Nprop_Ni_TNonly <- gam(data = det_loc, N_prop_initial ~  
-                       te(Mass_per_loss, TN_approx_avg, m = 2)+
-                       t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
-                       s(series_index, Mass_per_loss, bs = "re"), 
-                     method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_Tonly.pred<-predict_gam(type = "link", Nprop_Ni_TNonly, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, TN_approx_avg = c(300,700,1500)))%>%
-    mutate(TN_approx_avg = as_factor(TN_approx_avg))
-  
-  
-  
-  Nprop_Ni_TNonly.p<- ggplot()+
-    geom_point(data = det_loc%>%filter(!is.na(TN_approx_avg)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_Tonly.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = Temperature_C))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
-  N_Ni_TNonly.p
-  
-  summary(N_Ni_TNonly)
-  
-```
-  
-```{r N prop vs TN - initial/covar interaction}
-  #N_Ni_TN2 was best most complex model, no need to fit again, but form copied here as reminder
-  
-  #N_Ni_T2 <- gam(data = det_loc, N_prop_initial ~  
-  #                        ti(initial_N,Temperature_C, m = 2)+   
-  #                        ti(Mass_per_loss,Temperature_C, m = 2)+  
-  ##                      ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-  #                        te(Mass_per_loss, initial_N, m = 2)+
-  #                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-  #                        s(series_index, Mass_per_loss, bs = "re"), 
-  #             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  #a) ti(initialN, Temp)
-  #b) ti(Mass_per_loss, initial_N, Temperature_C, m = 2)
-  #c) ti(initial_N,Temperature_C, m = 2)+   ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-  #d)te(Mass_per_loss, initial_N,Temperature_C, m = 2)+
-  
-  Nprop_Ni_TN2a <- gam(data = det_loc, N_prop_initial ~  
-                     ti(initial_N, TN_approx_avg, m = 2)+
-                     te(Mass_per_loss, initial_N, m = 2)+
-                     t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                     s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_TN2b <- gam(data = det_loc, N_prop_initial ~  
-                     ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                     te(Mass_per_loss, initial_N, m = 2)+
-                     t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                     s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_TN2c <- gam(data = det_loc, N_prop_initial ~  
-                     ti(initial_N,TN_approx_avg, m = 2)+    
-                     ti(Mass_per_loss, initial_N, TN_approx_avg, m = 2)+
-                     te(Mass_per_loss, initial_N, m = 2)+
-                     t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                     s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  Nprop_Ni_TN2d <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, initial_N,TN_approx_avg, m = 2)+
-                     t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                     s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-  
-  
-  
-  
-  Ni_mod_names <-list(Nprop_Ni_TN2,Nprop_Ni_TN2a,Nprop_Ni_TN2b,Nprop_Ni_TN2c,Nprop_Ni_TN2d)
-  map(Ni_mod_names, AIC)#3 best, but not really different than any except 5
-  map(Ni_mod_names, appraise)#2 (a) has very slightly better resids
-  
-  N_Ni_T.pred<-predict_gam(type = "link", Nprop_Ni_TN2a, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,1.0,1.5,2.0),TN_approx_avg = c(300,700,1500)))%>%
-    mutate(TN_approx_avg = as_factor(TN_approx_avg), initial_N = as_factor(initial_N))
-  
-  
-  
-  Nprop_Ni_TN.p<- ggplot()+
-    #geom_point(data = det_loc%>%filter(!is.na(TN_approx_avg)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_T.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N, linetype = TN_approx_avg))+
-    facet_grid(initial_N~TN_approx_avg)+
-    geom_ribbon(data = Nprop_Ni_T.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
-  Nprop_Ni_TN.p
-  
-  summary(Nprop_Ni_TN2d)
-  
-```
-  
-
-##N prop ~ TP
-
-```{r N prop vs TP - Distro}
-
-#fit full model on multiple link functions, then compare potential fixed effect structures with AIC
-
-
-Nprop_Ni_TP1 <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+   
-                        ti(Mass_per_loss,TP_approx_avg, m = 2)+  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "identity"),select = TRUE) 
-
-Nprop_Ni_TP2 <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+   
-                        ti(Mass_per_loss,TP_approx_avg, m = 2)+  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_TP3 <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+   
-                        ti(Mass_per_loss,TP_approx_avg, m = 2)+  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re") , 
-             method = "REML", family = gaussian(link = "log"),select = TRUE) 
-
-Nprop_Ni_TP4 <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+   
-                        ti(Mass_per_loss,TP_approx_avg, m = 2)+  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "identity"),select = TRUE) 
-
-Nprop_Ni_TP5 <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+   
-                        ti(Mass_per_loss,TP_approx_avg, m = 2)+  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_TP6 <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+   
-                        ti(Mass_per_loss,TP_approx_avg, m = 2)+  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-Ni_mod_names <- list(N_Ni_TP1, N_Ni_TP2,N_Ni_TP3,N_Ni_TP4,N_Ni_TP5,N_Ni_TP6)
-map(Ni_mod_names, ~AIC(.)) #2 best
-map(Ni_mod_names, ~appraise(.)) #2 better resids than 6
-
-```
-Take dsitributional assumption from mod 2 (gaussian with inverse link)
-```{r N prop vs TP - covar only}
-Nprop_Ni_TPonly <- gam(data = det_loc, N_prop_initial ~  
-                     te(Mass_per_loss, TP_approx_avg, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_Tonly.pred<-predict_gam(type = "link", Nprop_Ni_TNonly, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, TP_approx_avg = c(300,700,1500)))%>%
-   mutate(TP_approx_avg = as_factor(TP_approx_avg))
-  
-
-
- Nprop_Ni_TNonly.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(TP_approx_avg)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_Tonly.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = TP_approx_avg))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
- Nprop_Ni_TNonly.p
- 
- summary(Nprop_Ni_TNonly)
-
-```
-
-
-```{r N prop vs TP - initial/covar interaction}
-#N_Ni_TN2 was best most complex model, no need to fit again, but form copied here as reminder
-
-#N_Ni_T2 <- gam(data = det_loc, N_prop_initial ~  
-#                        ti(initial_N,Temperature_C, m = 2)+   
-#                        ti(Mass_per_loss,Temperature_C, m = 2)+  
-##                      ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-#                        te(Mass_per_loss, initial_N, m = 2)+
-#                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-#                        s(series_index, Mass_per_loss, bs = "re"), 
-#             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-#a) ti(initialN, Temp)
-#b) ti(Mass_per_loss, initial_N, Temperature_C, m = 2)
-#c) ti(initial_N,Temperature_C, m = 2)+   ti(Mass_per_loss, initial_N, Temperature_C, m = 2)+
-#d)te(Mass_per_loss, initial_N,Temperature_C, m = 2)+
-
-Nprop_Ni_TP2a <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_TP2b <- gam(data = det_loc, N_prop_initial ~  
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-Nprop_Ni_TP2c <- gam(data = det_loc, N_prop_initial ~  
-                        ti(initial_N,TP_approx_avg, m = 2)+    
-                        ti(Mass_per_loss, initial_N, TP_approx_avg, m = 2)+
-                        te(Mass_per_loss, initial_N, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-Nprop_Ni_TP2d <- gam(data = det_loc, N_prop_initial ~  
-                        te(Mass_per_loss, initial_N,TP_approx_avg, m = 2)+
-                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
-                        s(series_index, Mass_per_loss, bs = "re"), 
-             method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
-
-
-
-
-Ni_mod_names <-list(Nprop_Ni_TP2,Nprop_Ni_TP2a,Nprop_Ni_TP2b,Nprop_Ni_TP2c,Nprop_Ni_TP2d)
-map(Ni_mod_names, AIC)#5 (d) best, then 2
-map(Ni_mod_names, appraise)#2 (a) has very slightly better resids
-
-Nprop_Ni_TP.pred<-predict_gam(type = "link", Nprop_Ni_TP2b, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,1.0,1.5,2.0),TP_approx_avg = c(50,100,300,500)))%>%
-   mutate(TP_approx_avg = as_factor(TP_approx_avg), initial_N = as_factor(initial_N))
-  
-
-
- Nprop_Ni_TP.p<- ggplot()+
-  #geom_point(data = det_loc%>%filter(!is.na(TP_approx_avg)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_TP.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N, linetype = TP_approx_avg))+
-   facet_grid(initial_N~TP_approx_avg)+
-   geom_ribbon(data = Nprop_Ni_TP.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-    geom_abline(slope = -0.01, intercept = 1)+
-    NULL
- Nprop_Ni_TP.p
- 
- summary(Nprop_Ni_TP2b)
-
-```
-No significant effect of TP here.
-
-##N prop~Velocity
-```{r N prop vs Velocity - Distro}
+##N mass~Velocity
+```{r N mass vs Velocity - Distro}
 
 #full model and second most complex model would not fit
 
-Nprop_Ni_vel1 <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel1 <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1623,7 +734,7 @@ Nprop_Ni_vel1 <- gam(data = det_loc, N_prop_initial ~
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = gaussian(link = "identity"),select = TRUE) 
 
-Nprop_Ni_vel2 <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel2 <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1631,7 +742,7 @@ Nprop_Ni_vel2 <- gam(data = det_loc, N_prop_initial ~
                         s(series_index, Mass_per_loss, bs = "re"),  
              method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
 
-Nprop_Ni_vel3 <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel3 <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1639,7 +750,7 @@ Nprop_Ni_vel3 <- gam(data = det_loc, N_prop_initial ~
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-Nprop_Ni_vel4 <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel4 <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1647,7 +758,7 @@ Nprop_Ni_vel4 <- gam(data = det_loc, N_prop_initial ~
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = Gamma(link = "identity"),select = TRUE) 
 
-Nprop_Ni_vel5 <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel5 <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1655,7 +766,7 @@ Nprop_Ni_vel5 <- gam(data = det_loc, N_prop_initial ~
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
 
-Nprop_Ni_vel6 <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel6 <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1663,54 +774,55 @@ Nprop_Ni_vel6 <- gam(data = det_loc, N_prop_initial ~
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = Gamma(link = "log"),select = TRUE) 
 
-Ni_mod_names <- list(Nprop_Ni_vel1, Nprop_Ni_vel2,Nprop_Ni_vel3,Nprop_Ni_vel4,Nprop_Ni_vel5,Nprop_Ni_vel6)
+Ni_mod_names <- list(N_Ni_vel1, N_Ni_vel2,N_Ni_vel3,N_Ni_vel4,N_Ni_vel5,N_Ni_vel6)
 map(Ni_mod_names, ~AIC(.)) #3 best
 map(Ni_mod_names, ~appraise(.)) #2 better resids than 6
 
 ```
 Take distributional assumption from mod 3 (gaussian with log link)
-```{r N prop vs Velocity - covar only}
-Nprop_Ni_velonly <- gam(data = det_loc, N_prop_initial ~  
+```{r N mass vs Velocity - covar only}
+N_Ni_velonly <- gam(data = det_loc, N_mass_norm ~  
                      te(Mass_per_loss, Velocity_m.s, m = 2)+
                         t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
                         s(series_index, Mass_per_loss, bs = "re"), 
                    method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-Nprop_Ni_velonly.pred<-predict_gam(type = "link", Nprop_Ni_velonly, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, Velocity_m.s = c(0.15,0.25,0.4)))%>%
+N_Ni_velonly.pred<-predict_gam(type = "link", N_Ni_velonly, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, Velocity_m.s = c(0.15,0.25,0.4)))%>%
    mutate(Velocity_m.s = as_factor(Velocity_m.s))
   
 
 
- Nprop_Ni_velonly.pred.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(!is.na(Velocity_m.s)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_velonly.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = Velocity_m.s))+
+ N_Ni_velonly.pred.p<- ggplot()+
+  geom_point(data = det_loc%>%filter(!is.na(Velocity_m.s)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = N_Ni_velonly.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = Velocity_m.s))+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
-Nprop_Ni_velonly.pred.p
+N_Ni_velonly.pred.p
  
- summary(Nprop_Ni_velonly)
+ summary(N_Ni_velonly)
 
 ```
+Velocity looks like it has a significant singular effect here on the N loss curves. It could be an important driver of these functions, or it could be correlated with initial N.
 
+```{r N mass vs Velocity - initial/covar interaction}
+#full model and mod4 can not fit - mroe coefficients than data
+#only fit fittable models
 
-```{r N prop vs Velocity - initial/covar interaction}
-#see what fits. Most complex model is base model. Then 'd' is next most complex
-
-Nprop_Ni_vel3a <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel3a <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
                         t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-Nprop_Ni_vel3b <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel3b <- gam(data = det_loc, N_mass_norm ~  
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
                         t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
                         s(series_index, Mass_per_loss, bs = "re"), 
              method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-Nprop_Ni_vel3c <- gam(data = det_loc, N_prop_initial ~  
+N_Ni_vel3c <- gam(data = det_loc, N_mass_norm ~  
                         ti(initial_N,Velocity_m.s, m = 2)+    
                         ti(Mass_per_loss, initial_N, Velocity_m.s, m = 2)+
                         te(Mass_per_loss, initial_N, m = 2)+
@@ -1724,32 +836,36 @@ Nprop_Ni_vel3c <- gam(data = det_loc, N_prop_initial ~
 
 
 
-Ni_mod_names <-list(Nprop_Ni_vel3a,Nprop_Ni_vel3b,Nprop_Ni_vel3c)
+Ni_mod_names <-list(N_Ni_vel3a,N_Ni_vel3b,N_Ni_vel3c)
 map(Ni_mod_names, AIC)#2 (b) best
 map(Ni_mod_names, appraise)#2 (b) probably best resids but none particularly good
 
-Nprop_Ni_vel3b.pred<-predict_gam(type = "link", Nprop_Ni_vel3b, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,1.0,1.5,2.0),Velocity_m.s = c(0.05,0.1,0.15,0.2,0.25,0.3,0.4)))%>%
+N_Ni_vel3b.pred<-predict_gam(type = "link", N_Ni_vel3b, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(0.4,1.0,1.5,2.0),Velocity_m.s = c(0.05,0.1,0.15,0.2,0.25,0.3,0.4)))%>%
    mutate(Velocity_m.s = as_factor(Velocity_m.s), initial_N = as_factor(initial_N))
   
 
 
- Nprop_Ni_vel3b.p<- ggplot()+
-  #geom_point(data = det_loc%>%filter(!is.na(Velocity_m.s)), aes(Mass_per_loss, N_prop_initial), alpha = 0.3)+
-    geom_smooth(data = Nprop_Ni_vel3b.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_N, linetype = Velocity_m.s))+
+ N_Ni_vel3b.p<- ggplot()+
+  #geom_point(data = det_loc%>%filter(!is.na(Velocity_m.s)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = N_Ni_vel3b.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_N, linetype = Velocity_m.s))+
    facet_grid(initial_N~Velocity_m.s)+
-   geom_ribbon(data = Nprop_Ni_vel3b.pred, aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
+   geom_ribbon(data = N_Ni_vel3b.pred, aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
- Nprop_Ni_vel3b.p
+ N_Ni_vel3b.p
  
- summary(Nprop_Ni_vel3b)
+ summary(N_Ni_vel3b)
 
 ```
+The changes here may suggest a positive effect on N immobilization at for low levels of velocity, but then at higher velocities the peaks become flatter, which may suggest an increasing control of fragmentation on N loss. Interesting to note the flattening is much sharper for lower-initial N litter.
+
+
+##N percent analysis 
+N% analysis is complete (I think) but was moved to old DetNut_NP_analysis, as N% is highly influenced by other consituents
 
 
 
-
-#C:N analysis
+##C:N analysis - deprecated but model form useful
 
 
 ```{r}
