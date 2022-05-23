@@ -1,0 +1,309 @@
+---
+title: "Show_NP"
+author: "CJR"
+date: "5/18/2022"
+output: html_document
+---
+
+##Setup and Data Trim
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(gratia)
+library(mgcv)
+library(tidymv)
+
+```
+
+```{r data ingest}
+
+
+det_raw <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
+
+```
+
+
+
+```{r create new summary variables, include=FALSE}
+det <- det_raw%>%
+  group_by(First_Author, Publication_Title, Time_Series_ID)%>%
+  mutate(series_index = group_indices())%>%#creates a unique index for each time series
+  ungroup()%>%
+  group_by(series_index)%>% #functionally, used to confine any window functions like first() to a time series rather than the first observation of whole dataframe
+  mutate(initial_C = first(C_per),
+         initial_N = first(N_per),
+         initial_P = first(P_per),
+         initial_CN = first(CN_ratio),
+         initial_CP = first(CP_ratio),
+         initial_NP = first(NP_ratio),
+         initial_Lignin = first(Lignin_per))%>%
+  #next normalizes CNP values to initial measurements for each time series and to initial masses as in Manzoni
+  mutate(C_prop_initial = C_per/first(C_per),
+         N_prop_initial = N_per/first(N_per),
+         P_prop_initial = P_per/first(P_per),
+         C_mass = ((C_per/100)*Mass_per_remaining),
+         N_mass = ((N_per/100)*Mass_per_remaining),
+         P_mass = ((P_per/100)*Mass_per_remaining),
+         C_mass_norm = ((C_per/100)*Mass_per_remaining)/(first(C_per/100)*first(Mass_per_remaining)),
+         N_mass_norm = ((N_per/100)*(Mass_per_remaining/100))/((first(N_per)/100)*first(Mass_per_remaining/100)),
+         P_mass_norm = ((P_per/100)*Mass_per_remaining)/(first(P_per/100)*first(Mass_per_remaining)))%>%
+
+
+  #next approximates percent mass remaining (if not provided) at each measurement day from k value
+  mutate(Mass_per_remaining = case_when(is.na(Mass_per_remaining) & Remain_Mass_Category == "afdm" ~ exp(-k*Meas_Day)*100,
+                                        is.na(Mass_per_remaining) & Remain_Mass_Category == "dm" ~ exp(-k*Meas_Day)*100,
+                                        TRUE ~ Mass_per_remaining))%>%
+  #next develops an approximation of N and P availability - imperfect, but aggregates the N and P data together about as well as possible without assuming anything else
+  mutate(Water_DIN_ug.L = case_when(is.na(Water_DIN_ug.L) & is.na(Water_NH4_ug.L) ~ Water_NO3_ug.L,
+                                    is.na(Water_DIN_ug.L) ~ Water_NO3_ug.L + Water_NH4_ug.L,
+                                    TRUE ~ Water_DIN_ug.L),
+         TN_approx = case_when(is.na(Water_TN_ug.L) ~ Water_DIN_ug.L,
+                               TRUE ~ Water_TN_ug.L),
+         TP_approx = case_when(is.na(Water_TP_ug.L) ~ Water_SRP_ug.L,
+                               TRUE ~ Water_TP_ug.L))%>%
+  #next creates a Temperature, TN, and TP average when there are multiple values given
+  mutate(Temperature_C_avg = case_when(n_distinct(Temperature_C) >1 ~ mean(Temperature_C), 
+                                       TRUE ~ Temperature_C),
+         TN_approx_avg = case_when(n_distinct(TN_approx) >1 ~ mean(TN_approx), 
+                                       TRUE ~ TN_approx),
+         TP_approx_avg = case_when(n_distinct(TP_approx) >1 ~ mean(TP_approx), 
+                                       TRUE ~ TP_approx))%>%
+  mutate(Deg_days = Temperature_C * (Meas_Day-first(Meas_Day)))%>% #degree days
+  #remove text from variable if not coarse fine or open
+
+  mutate(mesh_cat = case_when(Mesh_Size_Category == "coarse" | Mesh_Size_Category == "fine" | Mesh_Size_Category == "open" ~ Mesh_Size_Category,
+                              Mesh_Size_Category < 1 ~ "fine",
+                              Mesh_Size_Category >= 1 ~ "coarse"))%>%
+ 
+  mutate(Lotic_Lentic = case_when(System == "stream"|System == "Stream"|System == "Channel"|System == "river" ~ "Lotic",
+                                  System == "wetland"|System == "Wetland"|System == "wetlands"|System == "marsh"|System == "lake"|System == "Lake"|System == "pond"|System == "reservoir" ~ "Lentic",
+                                  TRUE ~ System),
+         Lotic_Lentic = as_factor(Lotic_Lentic))%>%
+
+  mutate(cum_TN = cumsum(TN_approx_avg)*Meas_Day,
+         cum_TP = cumsum(TP_approx_avg)*Meas_Day)%>%
+  mutate(series_index = as_factor(series_index),
+         Mass_per_loss = 100-(Mass_per_remaining),
+         mesh_cat = as_factor(mesh_cat),
+         Remain_Mass_Category = as_factor(Remain_Mass_Category))
+
+
+```
+
+```{r trim data}
+det_trim<-det%>%
+  filter(Mass_per_remaining<=100)%>%
+  filter(Mass_per_remaining >=20)%>%
+  #filter(N_mass_norm != 0)%>%
+  filter(Detritus_Type == "leaves")%>%
+  filter(Detritus_Condition == "senesced")%>%
+  filter(Remain_Mass_Category == "dm"|Remain_Mass_Category == "afdm")%>%
+  filter(mesh_cat != "open")%>%
+  mutate(Remain_Mass_Category = fct_drop(Remain_Mass_Category, only = c("dm_postleach", "afdm_postleach", "organic_carbon")))%>%
+  mutate(mesh_cat = fct_drop(mesh_cat, "open"))%>%
+  ungroup()
+
+levels(det_trim$Remain_Mass_Category)
+levels(det_trim$mesh_cat)
+levels(det_trim$Lotic_Lentic)
+
+```
+
+
+```{r create separate lotic-lentic fine-coarse datasets}
+
+det_loc <- det_trim%>%filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic")
+det_lec <- det_trim%>%filter(mesh_cat == "coarse", Lotic_Lentic == "Lentic")
+det_lof <- det_trim%>%filter(mesh_cat == "fine", Lotic_Lentic == "Lotic")
+det_lef <- det_trim%>%filter(mesh_cat == "fine", Lotic_Lentic == "Lentic")
+
+```
+
+
+
+#N mass models
+##Base initial N models
+
+
+```{r Ni Distro comparison}
+
+
+
+Ni_2 <- gam(data = det_loc, N_mass_norm ~  
+                     te(Mass_per_loss, initial_N, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+
+
+
+
+#model comparison and evaluation
+
+base_loc_mod <- Ni_2 #set best model to easier name to remember for later comparisons
+
+
+#plot predictions
+base_loc.pred<-predict_gam(type = "link", base_loc_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_N = c(0.3,0.6,1.0,1.5,2.0,3,3.5)))%>%
+  mutate(initial_N = as_factor(initial_N))
+
+
+ base_loc.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+    geom_smooth(data = base_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    NULL
+ base_loc.p
+
+ 
+
+
+```
+#PMass analysis
+```{r Pi Distro comparison}
+
+Pi_1 <- gam(data = det_loc, P_mass_norm ~  
+                        te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m=2, bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "identity"),select = TRUE) 
+
+Pi_2 <- gam(data = det_loc, P_mass_norm ~  
+                     te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "inverse"),select = TRUE) 
+
+
+Pi_3 <- gam(data = det_loc, P_mass_norm ~  
+                     te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
+
+Pi_4 <- gam(data = det_loc, P_mass_norm ~  
+                     te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m=2,bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "identity"),select = TRUE)
+#Problems fitting Pi_4 - convergence problems
+
+Pi_5 <- gam(data = det_loc, P_mass_norm ~  
+                     te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"),
+                   method = "REML", family = Gamma(link = "inverse"),select = TRUE)
+
+det_locb <- det_loc %>% filter(initial_P < 0.25)
+Pi_5b <- gam(data = det_locb, P_mass_norm ~  
+                     te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category,m=2, bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"),
+                   method = "REML", family = Gamma(link = "inverse"),select = TRUE)
+
+Pi_6 <- gam(data = det_loc, P_mass_norm ~  
+                     te(Mass_per_loss, initial_P, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m=2,bs = c("tp", "re"), full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+
+#model comparison and evaluation
+Pi_names<-list(Pi_1,Pi_2,Pi_3,Pi_4,Pi_5,Pi_6)
+map(Pi_names, ~AIC(.)) #best is 5 
+map(Pi_names, ~appraise(.)) #all are heteroscedastic...
+summary(Pi_5) 
+
+base_loc_mod <- Pi_5b  #set best model to easier name to remember for later comparisons
+
+
+#plot predictions
+base_loc.pred<-predict_gam(type = "link", base_loc_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_P = c(0.01,0.02,0.05,0.1,0.15,0.23)))%>%
+  mutate(initial_P = as_factor(initial_P))
+
+
+ base_loc.p<- ggplot()+
+  geom_point(data = det_loc, aes(Mass_per_loss, P_mass_norm), alpha = 0.3)+
+    geom_smooth(data = base_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_P))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    NULL
+ base_loc.p
+
+```
+
+##C:N analysis - deprecated but model form useful
+
+
+```{r}
+CN_base1 <- gam(data = det_loc, CN_ratio ~
+                        te(Mass_per_loss, initial_CN, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE)+
+                        s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
+             method = "REML", family = gaussian(link = "log"), select = TRUE)
+
+
+CN_base2 <- gam(data = det_loc, CN_ratio ~ 
+                        te(Mass_per_loss, initial_CN, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+             method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+
+
+
+AIC(CN_base1, CN_base2) #base 1 slightly favored
+map(list(CN_base1,CN_base2), appraise) #2 chosen due to less heteroscedastic resids, even if deltaAIC ~90
+
+baseCN_loc.pred<-predict_gam(type = "link", CN_base2, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_CN = c(25,40,50,70,90,110,140)))%>%
+  mutate(initial_CN = as_factor(initial_CN))
+
+
+
+ base_loc_CN.p<- ggplot()+
+  geom_point(data = det_loc%>%filter(!is.na(CN_ratio)), aes(Mass_per_loss, CN_ratio), alpha = 0.3)+
+    geom_smooth(data = baseCN_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_CN))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
+    NULL
+ base_loc_CN.p
+
+```
+
+
+#C:P base
+
+```{r}
+CP_base1 <- gam(data = det_loc, CP_ratio ~
+                        te(Mass_per_loss, initial_CP, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE)+
+                        s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
+             method = "REML", family = gaussian(link = "log"), select = TRUE)
+
+
+CP_base2 <- gam(data = det_loc, CP_ratio ~ 
+                        te(Mass_per_loss, initial_CP, m = 2)+
+                        t2(Mass_per_loss,Remain_Mass_Category, m = 2, bs = c("tp", "re"),full = TRUE) +
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+             method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+
+
+
+AIC(CN_base1, CN_base2) #base 1 slightly favored
+map(list(CN_base1,CN_base2), appraise) #2 chosen due to less heteroscedastic resids, even if deltaAIC ~90
+
+baseCN_loc.pred<-predict_gam(type = "link", CN_base2, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_CN = c(25,40,50,70,90,110,140)))%>%
+  mutate(initial_CN = as_factor(initial_CN))
+
+
+
+ base_loc_CN.p<- ggplot()+
+  geom_point(data = det_loc%>%filter(!is.na(CN_ratio)), aes(Mass_per_loss, CN_ratio), alpha = 0.3)+
+    geom_smooth(data = baseCN_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_CN))+
+    geom_abline(slope = -0.01, intercept = 1)+
+    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
+    NULL
+ base_loc_CN.p
+
+```
