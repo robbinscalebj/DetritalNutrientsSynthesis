@@ -13,6 +13,20 @@ library(janitor)
 library(gratia)
 library(mgcv)
 library(tidymv)
+library(RColorBrewer)
+
+plot_theme <- theme(panel.grid = element_blank(), 
+                    axis.text = element_text(size = 14, face = "bold"),
+                    axis.title = element_text(size = 16, face = "bold"),
+                    legend.title = element_text(size = 14, face = "bold"),
+                    legend.text = element_text(size = 12))
+
+deriv_plot_theme <- theme(axis.text = element_text(size = 14, face = "bold"),
+                    axis.title = element_text(size = 16, face = "bold"),
+                    legend.title = element_text(size = 14, face = "bold"),
+                    legend.text = element_text(size = 12),
+                    strip.text.x = element_text(size = 14, face = "bold"),
+                    strip.background = element_rect(fill = "#F4F6F6"))
 
 ```
 
@@ -113,8 +127,10 @@ levels(det_trim$Lotic_Lentic)
 ```{r create separate lotic-lentic fine-coarse datasets}
 
 det_loc <- det_trim%>%filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic", Remain_Mass_Category == "afdm")
+det_loc_cnp <- det_loc%>%filter(CNP_Ratio_Type == "molar")
 
 ```
+
 
 
 
@@ -122,7 +138,7 @@ det_loc <- det_trim%>%filter(mesh_cat == "coarse", Lotic_Lentic == "Lotic", Rema
 ##Base initial N models
 
 
-```{r Ni Distro comparison}
+```{r Ni curves}
 
 
 
@@ -147,10 +163,11 @@ Ni_4 <- gam(data = det_loc, N_mass_norm ~
                         s(series_index, Mass_per_loss, bs = "re"), 
                    method = "REML", family = Gamma(link = "identity"),select = TRUE) 
 
-Ni_5 <- gam(data = det_loc, N_mass_norm ~  
+Ni_5 <- gam(data = det_loc2, N_mass_norm ~  
                      te(Mass_per_loss, initial_N, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re"), 
                    method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+
 
 Ni_6 <- gam(data = det_loc, N_mass_norm ~  
                      te(Mass_per_loss, initial_N, m = 2)+
@@ -187,20 +204,22 @@ Nbase_loc_mod <- Ni_5 #set best model to easier name to remember for later compa
 
 
 #plot predictions
-Nbase_loc.pred<-predict_gam(type = "link", Nbase_loc_mod, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3)))%>%
+Nbase_loc.pred<-predict_gam(type = "link", Ni_5, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3)))%>%
   mutate(initial_N = as_factor(initial_N))
 
 
-#
-
-
 Nbase_loc.p<- ggplot()+
-  geom_point(data = det_loc%>%filter(Remain_Mass_Category == "afdm"), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
+  geom_point(data = det_loc%>%filter(!is.na(N_mass_norm)), aes(Mass_per_loss, N_mass_norm), alpha = 0.3)+
     geom_smooth(data = Nbase_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N))+
     geom_abline(slope = -0.01, intercept = 1)+
-   theme_bw()+
+  ylab("Normalized N Mass")+
+  xlab("Mass Loss (%)")+
+  scale_color_brewer(palette = "Dark2")+
+  guides(color=guide_legend(title="Initial N (%)"))+
+   theme_bw()+plot_theme+
     NULL
  Nbase_loc.p
+ 
  
 
 
@@ -222,19 +241,21 @@ N_deriv_samples <- N_gam_fitted%>%arrange(initial_N)%>%group_by(draw, initial_N)
   group_by(initial_N, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
 
 ggplot(data = N_deriv_samples%>%mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)))%>%filter(Mass_per_loss>0))+
-         geom_line(aes(x= Mass_per_loss, y = md_posterior))+
+         geom_line(aes(x= Mass_per_loss, y = md_posterior), size = 1)+
   geom_line(aes(x= Mass_per_loss, y = lower_posterior), linetype = 2)+
   geom_line(aes(x= Mass_per_loss, y = upper_posterior), linetype = 2)+
          facet_wrap(.~initial_N)+
   ylab("First Derivative (N/Mass loss)")+
-  theme_bw()+
+  xlab("Mass Loss (%)")+
+  geom_hline(yintercept = 0)+
+  theme_bw()+deriv_plot_theme+
   NULL
 
 ```
 
 
 #PMass analysis
-```{r Pi Distro comparison}
+```{r Pi curves}
 
 
 Pi_1 <- gam(data = det_loc, P_mass_norm ~  
@@ -306,13 +327,14 @@ Pbase_loc.pred<-predict_gam(type = "link", Pbase_loc_mod, length_out = 5000,  ex
 
 
  Pbase_loc.p<- ggplot()+
-  geom_point(data = det_loc, aes(Mass_per_loss, P_mass_norm), alpha = 0.3)+
+  geom_point(data = det_loc%>%filter(!is.na(P_mass_norm)), aes(Mass_per_loss, P_mass_norm), alpha = 0.3)+
     geom_smooth(data = Pbase_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = Initial_P))+
     geom_abline(slope = -0.01, intercept = 1)+
-   #geom_smooth(data = base_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit-se.fit)))+
-   #facet_wrap(.~Initial_P)+
+   scale_color_brewer(palette = ("Dark2"))+
+   guides(color=guide_legend(title="Initial P (%)"))+
+   xlab("Mass Loss (%)")+
    ylab("Normalized P mass")+
-   theme_bw()+
+   theme_bw()+plot_theme+
     NULL
  Pbase_loc.p
 
@@ -332,12 +354,14 @@ P_deriv_samples <- P_gam_fitted%>%arrange(initial_P)%>%group_by(draw, initial_P)
   group_by(initial_P, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
 
 ggplot(data = P_deriv_samples%>%mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)))%>%filter(Mass_per_loss>0))+
-         geom_line(aes(x= Mass_per_loss, y = md_posterior))+
+         geom_line(aes(x= Mass_per_loss, y = md_posterior), size = 1)+
   geom_line(aes(x= Mass_per_loss, y = lower_posterior), linetype = 2)+
   geom_line(aes(x= Mass_per_loss, y = upper_posterior), linetype = 2)+
          facet_wrap(.~initial_P)+
+  geom_hline(yintercept = 0)+
   ylab("First Derivative (P/Mass loss)")+
-  theme_bw()+
+  xlab("Mass Loss (%)")+
+  theme_bw()+deriv_plot_theme+
   NULL
 
 ```
@@ -345,7 +369,7 @@ ggplot(data = P_deriv_samples%>%mutate(Mass_per_loss = as.numeric(as.character(M
 ##C:N analysis 
 
 
-```{r}
+```{r CN curves}
 CN_base1 <- gam(data = det_loc, CN_ratio ~
                         te(Mass_per_loss, initial_CN, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
@@ -386,17 +410,18 @@ baseCN_loc.pred<-predict_gam(type = "link", CN_base2, length_out = 5000,  exclud
   geom_point(data = det_loc%>%filter(!is.na(CN_ratio)), aes(Mass_per_loss, CN_ratio), alpha = 0.3)+
     geom_smooth(data = baseCN_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_CN))+
     geom_abline(slope = -0.01, intercept = 1)+
-  # scale_y_continuous(trans = "log", breaks = c(20,50,150))+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
+   scale_y_continuous(breaks = c(20,50,100,150))+
     ylab("C:N")+
    xlab("Mass Loss (%)")+
+   scale_color_brewer(palette = ("Dark2"))+
    guides(color=guide_legend(title="Initial C:N"))+
-   theme_bw()+
-   theme(panel.grid = element_blank())+
-    NULL
- base_loc_CN.p
+   theme_bw()+plot_theme+
+   NULL
+
+   base_loc_CN.p
 
 ```
+
 ```{r C:N derivs}
 CN_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), initial_CN = c(25,40,50,70,100,140), series_index = 578)
 n_draws <- 10000
@@ -412,56 +437,53 @@ CN_deriv_samples <- CN_gam_fitted%>%arrange(initial_CN)%>%group_by(draw, initial
   group_by(initial_CN, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
 
 ggplot(data = CN_deriv_samples%>%mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)))%>%filter(Mass_per_loss>0))+
-         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)))+
+         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)), size = 1)+
   geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
   geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
-         facet_wrap(.~initial_CN)+
   scale_y_continuous(trans="log")+
+         facet_wrap(.~initial_CN)+
+  #
+  geom_hline(yintercept = 1)+
   ylab("First Derivative (C:N/Mass loss)")+
-  theme_bw()+
+  xlab("Mass Loss (%)")+
+  theme_bw()+deriv_plot_theme+
   NULL
 
 ```
 
 #C:P base
 
-```{r}
-CP_1 <- gam(data = det_loc, CP_ratio ~
+```{r CP Mass loss}
+CP_base1 <- gam(data = det_loc_cnp, CP_ratio ~
                         te(Mass_per_loss, initial_CP, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
              method = "REML", family = gaussian(link = "log"), select = TRUE)
 
 
-CP_base2 <- gam(data = det_loc, CP_ratio ~ 
-                        te(Mass_per_loss, initial_CP, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+(series_index, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"),select = TRUE)
+CP_base2 <- gam(data = det_loc, CP_ratio ~
+                  te(Mass_per_loss, initial_CP, m= 2)+
+                  s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"),
+                method = "REML", family = Gamma(link = "log"), select = TRUE)
 
-CP_base3 <- gam(data = det_loc, CP_ratio ~ 
-                        s(Mass_per_loss, m = 2) + s(initial_CP, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+(series_index, bs = "re"),method = "REML", family = Gamma(link = "log"),select = TRUE) 
+AIC(CP_base1, CP_base2) #delta AIC ~3
+map(list(CP_base1, CP_base2), appraise) #essentially the same, selecting gaussian model
 
-
-
-
-AIC(CP_base1, CP_base2) #base 1 slightly favored
-map(list(CP_base1,CP_base2), appraise) #2 chosen due to less heteroscedastic resids, even if deltaAIC ~90
-
-CP_2a <- gam(data = det_loc, CP_ratio ~  
+CP_1a <- gam(data = det_loc, CP_ratio ~  
                ti(Mass_per_loss, m = 2) + ti(initial_CP, m = 2)+
                      ti(Mass_per_loss, initial_CP, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-CP_2b <- gam(data = det_loc, CP_ratio ~  
+CP_1b <- gam(data = det_loc, CP_ratio ~  
                      ti(Mass_per_loss, m = 2) + ti(initial_CP, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
 
-map(list(CP_2a, CP_2b), summary) #interaction term pval = 0.0014
-map(list(CP_2a, CP_2b), AIC) #AIC favors second model
+map(list(CP_1a, CP_1b), summary) #interaction term highly significant - 2.4e-5
+map(list(CP_1a, CP_1b), AIC) #favors interaction model
 
-baseCP_loc.pred<-predict_gam(type = "link", CP_base2, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_CP = c(5000,3000,2000,1600,1200,800)))%>%
+
+baseCP_loc.pred<-predict_gam(type = "link", CP_base1, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_CP = c(5000,3000,2000,1600,1200,800)))%>%
   mutate(initial_CP = fct_relevel(as_factor(initial_CP), c("5000","3000","2000","1600","1200","800")))
 
 
@@ -469,9 +491,12 @@ baseCP_loc.pred<-predict_gam(type = "link", CP_base2, length_out = 5000,  exclud
  base_loc_CP.p<- ggplot()+
   geom_point(data = det_loc%>%filter(!is.na(CP_ratio)), aes(Mass_per_loss, CP_ratio), alpha = 0.3)+
     geom_smooth(data = baseCP_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_CP))+
-    geom_abline(slope = -0.01, intercept = 1)+
-    #geom_ribbon(data = base_loc.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
-   theme_bw()+
+   scale_y_continuous(breaks = c(1000,3000,5000, 8000))+
+   scale_color_brewer(palette = "Dark2")+
+   guides(color=guide_legend(title="Initial C:P"))+
+   ylab("C:P")+
+   xlab("Mass loss (%)")+
+   theme_bw()+plot_theme+
     NULL
  base_loc_CP.p
 
@@ -483,7 +508,7 @@ n_draws <- 10000
 CP_mass_grid_exp <- map_dfr(seq_len(n_draws), ~CP_mass_grid)
 
 
-CP_gam_fitted <- fitted_samples(CP_base2, exclude = "s(series_index,Mass_per_loss", n = n_draws, newdata = CP_mass_grid, seed = 1)%>%
+CP_gam_fitted <- fitted_samples(CP_base1, exclude = "s(series_index,Mass_per_loss", n = n_draws, newdata = CP_mass_grid, seed = 1)%>%
   bind_cols(CP_mass_grid_exp)%>%mutate(initial_CP = as_factor(initial_CP), draw = as_factor(draw), fitted = log(fitted))
 #log transformed fitted values because *ratios*
 
@@ -492,13 +517,93 @@ CP_deriv_samples <- CP_gam_fitted%>%arrange(initial_CP)%>%group_by(draw, initial
   group_by(initial_CP, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
 
 ggplot(data = CP_deriv_samples%>%mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)))%>%filter(Mass_per_loss>0))+
-         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)))+
+         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)),size = 1)+
   geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
   geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
          facet_wrap(.~initial_CP)+
+  geom_hline(yintercept = 1)+
   scale_y_continuous(trans="log")+
    ylab("First Derivative (C:P/Mass loss)")+
-  theme_bw()+
+  xlab("Mass Loss (%)")+
+  theme_bw()+deriv_plot_theme+
   NULL
 
+```
+
+#N:P base
+
+```{r NP mass loss curves}
+NP_base1 <- gam(data = det_loc, NP_ratio ~
+                        te(Mass_per_loss, initial_NP, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
+             method = "REML", family = gaussian(link = "log"), select = TRUE)
+
+
+NP_base2 <- gam(data = det_loc, NP_ratio ~
+                  te(Mass_per_loss, initial_NP, m= 2)+
+                  s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"),
+                method = "REML", family = Gamma(link = "log"), select = TRUE)
+
+AIC(NP_base1, NP_base2) #2, delAIC=39
+map(list(NP_base1, NP_base2), appraise) #resids better on 2
+
+NP_2a <- gam(data = det_loc, NP_ratio ~  
+               ti(Mass_per_loss, m = 2) + ti(initial_NP, m = 2)+
+                     ti(Mass_per_loss, initial_NP, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
+
+NP_2b <- gam(data = det_loc, NP_ratio ~  
+                     ti(Mass_per_loss, m = 2) + ti(initial_NP, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = gaussian(link = "log"),select = TRUE) 
+
+map(list(NP_2a, NP_2b), summary) #interaction term - 0.0026
+map(list(NP_2a, NP_2b), AIC) #delAIC 121 in favor of interactive model
+
+
+baseNP_loc.pred<-predict_gam(type = "link", NP_base2, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_NP = c(100,70,55,40,25,10)))%>%
+  mutate(initial_NP = fct_relevel(as_factor(initial_NP), c("100","70","55","40","25","10")))
+
+
+
+ base_loc_NP.p<- ggplot()+
+  geom_point(data = det_loc%>%filter(!is.na(NP_ratio)), aes(Mass_per_loss, NP_ratio), alpha = 0.3)+
+    geom_smooth(data = baseNP_loc.pred, se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = initial_NP))+
+   scale_y_continuous(breaks = c(10,50,100, 200))+
+   scale_color_brewer(palette = "Dark2")+
+   guides(color=guide_legend(title="Initial N:P"))+
+   ylab("N:P")+
+   xlab("Mass loss (%)")+
+   theme_bw()+plot_theme+
+    NULL
+ base_loc_NP.p
+
+```
+
+```{r NP derivs}
+NP_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), initial_NP = c(100,70,55,40,25,10), series_index = 578)
+n_draws <- 10000
+NP_mass_grid_exp <- map_dfr(seq_len(n_draws), ~NP_mass_grid)
+
+
+NP_gam_fitted <- fitted_samples(NP_base2, exclude = "s(series_index,Mass_per_loss", n = n_draws, newdata = NP_mass_grid, seed = 1)%>%
+  bind_cols(NP_mass_grid_exp)%>%mutate(initial_NP = as_factor(initial_NP), draw = as_factor(draw), fitted = log(fitted))
+#log transformed fitted values because *ratios*
+
+
+NP_deriv_samples <- NP_gam_fitted%>%arrange(initial_NP)%>%group_by(draw, initial_NP)%>%mutate(fit_dif = (fitted-lag(fitted))/0.2)%>%mutate(Mass_per_loss = as_factor(Mass_per_loss))%>%ungroup()%>%
+  group_by(initial_NP, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
+
+ggplot(data = NP_deriv_samples%>%mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)))%>%filter(Mass_per_loss>0))+
+         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)),size = 1)+
+  geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
+  geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
+         facet_wrap(.~initial_NP)+
+  geom_hline(yintercept = 1)+
+  scale_y_continuous(trans="log")+
+   ylab("First Derivative (N:P/Mass loss)")+
+  xlab("Mass Loss (%)")+
+  theme_bw()+deriv_plot_theme+
+  NULL
 ```

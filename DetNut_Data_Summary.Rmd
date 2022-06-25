@@ -15,7 +15,7 @@ library(datawizard)
 ```{r read datafile, include = FALSE, message = FALSE, warning = FALSE}
 
 
-det <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database_preliminary.csv")
+det <- read_csv("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\DetNutSynth_Database.csv")
 
 
 ```
@@ -134,7 +134,7 @@ det.x <- det2%>%filter(Initial_Mass_g>400)
 #this will create a nested dataframe (the data are included as a column within the larger dataframe) that can be used to look at characteristics of each time series, rather than the  data overall. This may have limited application, but can also be expanded.
 
 DetNut.nest <- det2%>%
-  group_by(First_Author, Title, Journal, series_index)%>%
+  group_by(First_Author, Publication_Title, Journal, series_index)%>%
   nest()%>%
   mutate(System = map_chr(data, ~first(.$System)),
          Lotic_Lentic = map_chr(data, ~first(.$Lotic_Lentic)),
@@ -154,9 +154,9 @@ DetNut.nest <- det2%>%
          C_counts = map_dbl(data, ~sum(!is.na(.$C_per))),
          N_counts = map_dbl(data, ~sum(!is.na(.$N_per))),
          P_counts = map_dbl(data, ~sum(!is.na(.$P_per))),
-         CN_counts = map_dbl(data, ~sum(!is.na(.$CN_molar))),
-         CP_counts = map_dbl(data, ~sum(!is.na(.$CP_molar))),
-         NP_counts = map_dbl(data, ~sum(!is.na(.$NP_molar))))
+         CN_counts = map_dbl(data, ~sum(!is.na(.$CN_ratio))),
+         CP_counts = map_dbl(data, ~sum(!is.na(.$CP_ratio))),
+         NP_counts = map_dbl(data, ~sum(!is.na(.$NP_ratio))))
 
 
 ```

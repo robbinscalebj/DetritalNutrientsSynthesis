@@ -172,7 +172,6 @@ DetNut3<-DetNut2%>%
 
 
 
-For metadata, we can use fct_count() on every limited (some variables are descriptive, not actually categorical) categorical variable to summarize/list the variable levels used in the database.
 
 {r write tidied database}
 #write current version of database file - currently goes to computer working directory
