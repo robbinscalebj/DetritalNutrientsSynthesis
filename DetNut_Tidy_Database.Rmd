@@ -2,21 +2,17 @@
 title: "DetNutSynth_CleanFiles"
 output: html_document
 ---
-Remaining tasks:
-1. Refactor 'forested' to 'forest'
-2. Refactor 'fresh' to 'green'
-3. #Tidy dates
-4## Directly Repair dates in Clivot "Impaired leaf litter processing in acidified streams" (currently 2010,2011,2012... sequence Excel style)
-5. Annotate this markdown?
+
+This markdown shows the process used to clean and compile proofed .txt files into the final Detrital Nutrients dataset (.csv). This markdown was created using R version 4.1.2 (2021-11-01).
+
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(janitor)
 library(lubridate)
-
-
 ```
+
 
 ```{r Set working directory}
 #Use the test directory on the Desktop
@@ -24,10 +20,9 @@ DetNut_Files<-list.files("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\F
 head(DetNut_Files)
 
 ```
-#Whole set ingest and carpentry
-```{r Read files and parse variables}
 
-#include incorrect but present names so they will parse the same as the correctly named versions of those variables -essential for name repair later - spits lots of warnings by design
+First, pull all files together into a list, while individually parsing each files column names. Explicitly included any present spellings of column names (i.e., even if incorrect) so they will parse the same as the correctly named versions of those variables - essential for name repair later. This spits lots of warnings by design, but will be rectified in next step.
+```{r Read files and parse variables}
 
 DetNut<-DetNut_Files%>%
   map(~read_tsv(.x, col_types = cols(First_Author = "c",
@@ -71,11 +66,11 @@ DetNut<-DetNut_Files%>%
 
 names(DetNut) <- DetNut_Files%>%
   str_remove("/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesis Data txt Files/")
-
+# pulls names to make it easier to identify later
 
 ```
 
-
+Repair names to reconcile minor errors in column names across final .txt files. Spits more warning errors, but again by design. 
 
 ```{r repair names}
 #this map_if function can be used to repair names if they appear in a nested tibble
@@ -109,9 +104,11 @@ DetNut2 <- DetNut%>%
   
 ```
 
-Manually checked that files have same number of columns
 
-```{r reconcile factor level names and fill-in ratios}
+
+Reconcile factor level names used across studies files. These are mostly minor details like spelling errors, or where data collectors assigned slightly different names for the same categories where anticipated (pre-data collection) factor levels were not clearly applicable. Final chunk of code fills in ratio data where possible (e.g., %C and %N are available, but C:N is not recorded)
+
+```{r reconcile factors}
 
 DetNut3<-DetNut2%>%
   mutate(Detritus_Type = fct_collapse(Detritus_Type, 
@@ -138,7 +135,9 @@ DetNut3<-DetNut2%>%
                                                 afdm = c("afdm", "AFDM", "afdm_postleach"),
                                                 dm_afdm_mix = "dm_afdm"))%>%
   mutate(Detritus_Condition = fct_collapse(Detritus_Condition,
-                                         senesced = c("scenesced","senescent")))%>%
+                                         senesced = c("scenesced","senescent"),
+                                         green = c("fresh", "green"),
+                                         dried_wood = "fresh_dried"))%>%
   mutate(Detritus_Species = str_replace_all(Detritus_Species,"_", " "))%>%
   mutate(Journal = str_replace_all(Journal,"_"," "),
          Journal = str_remove_all(Journal, "\UFFFD"),
@@ -152,7 +151,8 @@ DetNut3<-DetNut2%>%
                                      beaker = c("Beaker", "beaker"),
                                      litter_bag = c("litter_bag", "litter_ bag", "litter_bags", "leaf_pack"), 
                                      string = c("nylon_string", "string")))%>%
-  mutate(LULC_Category = str_replace_all(LULC_Category, "_", " "))%>%
+  mutate(LULC_Category = str_replace_all(LULC_Category, "_", " "),
+         LULC_Category = str_replace(LULC_Category, "forested", "forest"))%>%
   mutate(Light_Category = fct_collapse(Light_Category, 
                                        shade = c("shade", "shaded"),
                                        dark = c("Dark", "dark","closed"),
@@ -176,22 +176,32 @@ DetNut3<-DetNut2%>%
 
 ```
 
-
-```{r reconcile date formatting}
-df <- DetNut3%>%select(Start_Date, First_Author, Publication_Title)%>%
-  mutate(Start_Date2 = parse_date_time(Start_Date, c("dby", "dbY", "mdY", "mdy")), 
-    Start_Date3 = ifelse(is.na(Start_Date2), "Yes", "NOPE"))#%>%
- # filter(Start_Date3 == "Yes")
+Not all Start_Date entries have all information (e.g., some papers report only year or month of incubation start, or not clear at all). Following converts the many (and non-standard) formats of dates found in Start_Date column to separate (Start_)Year, Month, and Day columns.
  
-#don't parse "bY" - save that and push directly into month/year columns 
+```{r reconcile date formatting}
 
-
-
-#create cols - "Start_Year", "Start_Month", "Start_DayOfMonth"
+DetNut4 <- DetNut3%>%
+#create helper column to parse standard date formats - sets up a flag by which to conditionally operate on only non-standard dates with the Start_Date column. Will fix non-parsers in next step.
+  mutate(Start_Date2 = parse_date_time(Start_Date, c("dby", "dbY")))%>%
+#create Start_Year column - convert Date with all alphabet character to NA (no year included)
+  mutate(Start_Year = case_when(str_detect(Start_Date, "^[:alpha:]+$") ~ NA_character_,
+                                is.na(Start_Date2) ~str_remove_all(Start_Date, "[:alpha:]"), #if non-standard date with alpha+numeric character, remove alphabetical (only year characters remain)
+                                !is.na(Start_Date2) ~ as.character(year(Start_Date2)), #pull year from standard date stored in helper column
+                                str_detect(Start_Date, "^[:digit:]+$") ~ Start_Date),#if Start_Date is only a number (i.e., all digits), pull value into Start_Year
+         
+#Create Start_Month - same previous step, but for month/alphabet characters rather than digit characters
+         Start_Month = case_when(str_detect(Start_Date, "^[:digit:]+$") ~ NA_character_,
+                                 is.na(Start_Date2) ~ str_remove_all(Start_Date, "[:digit:]"),
+                                 !is.na(Start_Date2) ~ as.character(month(Start_Date2)),
+                                 str_detect(Start_Date, "^[:alpha:]+$") ~ Start_Date), 
+#convert month names to month numbers
+         Start_Month = ifelse(str_detect(Start_Month,"^[:alpha:]+$"), match(Start_Month, month.name), Start_Month),
+         Start_Day = day(Start_Date2))%>% #only standard date formats included days, so just pull from there
+  select(-Start_Date, Start_Date2) #remove Start_Date cols - no longer needed
 
 ```
 
 {r write tidied database}
 #write current version of database file - currently goes to computer working directory
-DetNut3%>%
+DetNut4%>%
   write_csv("DetNutSynth_Database.csv")
