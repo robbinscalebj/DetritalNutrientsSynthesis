@@ -2,19 +2,25 @@
 title: "DetNutSynth_CleanFiles"
 output: html_document
 ---
+Remaining tasks:
+1. Refactor 'forested' to 'forest'
+2. Refactor 'fresh' to 'green'
+3. #Tidy dates
+4## Directly Repair dates in Clivot "Impaired leaf litter processing in acidified streams" (currently 2010,2011,2012... sequence Excel style)
+5. Annotate this markdown?
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
-library(assertr)
 library(janitor)
+library(lubridate)
 
 
 ```
 
 ```{r Set working directory}
 #Use the test directory on the Desktop
-DetNut_Files<-list.files("C:\\Users\\Caleb_Robbins\\Dropbox\\Detrital Nutrients Synth\\Final Proofed Files", full.names = TRUE) #Obviously change this to where you need to
+DetNut_Files<-list.files("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\Final Proofed Files", full.names = TRUE) #Obviously change this to where you need to
 head(DetNut_Files)
 
 ```
@@ -171,13 +177,21 @@ DetNut3<-DetNut2%>%
 ```
 
 
+```{r reconcile date formatting}
+df <- DetNut3%>%select(Start_Date, First_Author, Publication_Title)%>%
+  mutate(Start_Date2 = parse_date_time(Start_Date, c("dby", "dbY", "mdY", "mdy")), 
+    Start_Date3 = ifelse(is.na(Start_Date2), "Yes", "NOPE"))#%>%
+ # filter(Start_Date3 == "Yes")
+ 
+#don't parse "bY" - save that and push directly into month/year columns 
 
+
+
+#create cols - "Start_Year", "Start_Month", "Start_DayOfMonth"
+
+```
 
 {r write tidied database}
 #write current version of database file - currently goes to computer working directory
 DetNut3%>%
   write_csv("DetNutSynth_Database.csv")
-
-
-
-
