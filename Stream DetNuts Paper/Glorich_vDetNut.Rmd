@@ -1,0 +1,113 @@
+---
+title: "GloRich_vDetNut"
+author: "David"
+date: "7/12/2022"
+output: html_document
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r}
+
+glo <- read.csv("/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Code/hydrochemistry.csv")
+head(glo)
+
+```
+
+Note: all concentrations in umol L^-1
+see documentation here: https://store.pangaea.de/Publications/HartmannJens-etal_2019/Documentation_Final_2019_05_24.pdf
+
+```{r TN vs NO3}
+
+library(ggplot2)
+
+
+no3 <- ggplot() + geom_point(data=glo[-NO3grTN,], aes(x=NO3,y=TN)) + scale_y_log10() + scale_x_log10() 
+no3
+
+summary(glo$NO3/glo$TN)
+NO3grTN <- which(glo$NO3/glo$TN > 1 | glo$NO3==0 | glo$NO3 < 0 | glo$TN < 0 | glo$TN == 0) # remove zero or negative values, and any NO3 > TN
+
+nrow(glo[-NO3grTN,])
+1270264-1215599 # 54,665 matching TN, NO3 values
+
+summary(glo[-NO3grTN,]$NO3/glo[-NO3grTN,]$TN)
+
+
+```
+
+Glorich data set contains both total NH4 (TNH4) and dissolved NH4 (DNH4), this chunk for dissolved
+```{r}
+
+names(glo)
+zeroDNH4 <- which(glo$DNH4 < 0|glo$DNH4==0|glo$TN==0|glo$TN<0) # remove negative or zero values.
+
+nh4 <- ggplot() + geom_point(data=glo[-zeroDNH4,], aes(x=DNH4,y=TN)) + scale_y_log10() + scale_x_log10() 
+nh4
+
+nrow(glo[-zeroDNH4,]) - 1160581 # 110,218 matching TN, DNH4 values
+
+summary(glo[-zeroDNH4,]$DNH4/glo[-zeroDNH4,]$TN)
+
+```
+
+```{r TN vs DIN}
+
+din <- ggplot() + geom_point(data=glo, aes(x=DIN,y=TN)) + scale_y_log10() + scale_x_log10() 
+din
+1274102-1266128 # 7,794 matching TN, DIN values
+
+summary(glo$DIN/glo$TN)
+DINgrTN <- which(glo$DIN/glo$TN > 1)
+
+summary(glo[-DINgrTN,]$DIN/glo[-DINgrTN,]$TN)
+
+```
+
+```{r TP vs DIP}
+
+dip <- ggplot() + geom_point(data=glo, aes(x=DIP,y=TP)) + scale_y_log10() + scale_x_log10() 
+dip
+1274102-954523 # 319,579 matching TP, DIP values
+
+summary(glo$DIP/glo$TP)
+DIPgrTP <- which(glo$DIP/glo$TP > 1 | glo$TP ==0 | glo$DIP==0 | glo$DIP < 0) # 15,039 DIP > TP, or TP = 0, or DIP = 0
+
+summary(glo[-DIPgrTP,]$DIP/glo[-DIPgrTP,]$TP)
+
+nrow(glo[-DIPgrTP,]) - 951542 # 307,521 matching TP, DIP values.
+
+dip2 <- ggplot() + geom_point(data=glo[-DIPgrTP,], aes(x=DIP,y=TP)) + scale_y_log10() + scale_x_log10() +
+  geom_line(data = data.frame(x = exp(lmDIP$model[[1]]), y = predict(lmDIP), aes(x=x,y=y), color = "red"))
+dip2
+
+```
+
+
+```{r lm runs for TN vs NO3, NH4, DIN, and TP vs DIP}
+
+#in all cases, log-log transform improved model fit over untransformed
+#overall, just interested in slope here as average ratio of Total nutrient: moiety 
+NO3_data <- glo[-NO3grTN,]%>%mutate(log.NO3 = log(NO3*14), log.TN = log(TN*14))
+lmNO3 <- lm(log.TN ~ log.NO3, data=NO3_data)
+summary(lmNO3)
+#multiplicative factor = exp(4.541+0.4748*log(NO3))
+
+NH4_data <- glo[-zeroDNH4,]%>%mutate(log.NH4 = log(DNH4*14), log.TN = log(TN*14))
+lmNH4 <- lm(log.TN ~ log.NH4,data=NH4_data)
+summary(lmNH4)
+#multiplicative factor = exp(5.46+0.4722*log(NH4))
+
+DIN_data <- glo[-DINgrTN,]%>%mutate(log.DIN = log(DIN*14), log.TN = log(TN*14))
+lmDIN <- lm(log.TN ~ log.DIN, data=DIN_data)
+summary(lmDIN)
+#multiplicative factor = exp(2.11+0.785*log(DIN))
+
+DIP_data <- glo[-DIPgrTP,]%>%mutate(log.DIP = log(DIP*31), log.TP = log(TP*31))
+lmDIP <- lm(log.TP~log.DIP, data = DIP_data)
+summary(lmDIP)
+#multiplicative factor = exp(2.25+0.674*log(DIP))
+
+```
+
+

@@ -3,7 +3,7 @@ title: "DetNutSynth_CleanFiles"
 output: html_document
 ---
 
-This markdown shows the process used to clean and compile proofed .txt files into the final Detrital Nutrients dataset (.csv). This markdown was created using R version 4.1.2 (2021-11-01).
+This markdown shows the process for compiling proofed .txt files into the final Detrital Nutrients dataset (.csv). This markdown was created using R version 4.2.1.
 
 
 ```{r setup, include=FALSE}
@@ -15,8 +15,8 @@ library(lubridate)
 
 
 ```{r Set working directory}
-#Use the test directory on the Desktop
-DetNut_Files<-list.files("C:\\Users\\robbi\\Dropbox\\Detrital Nutrients Synth\\Final Proofed Files", full.names = TRUE) #Obviously change this to where you need to
+#Set working directory to location of files
+DetNut_Files<-list.files("Final Proofed Files", full.names = TRUE) #Obviously change this to where you need to
 head(DetNut_Files)
 
 ```
@@ -116,7 +116,7 @@ DetNut3<-DetNut2%>%
                       culms = c("culm", "culms"),
                       roots = c("roots", "plant_roots"),
                       wood_veneer = c("veneer", "wood_veneer"),
-                      stems_and_leaves = c("stem_leaves", "stem_leaves", "leaf_stem", "leaves_stem", "stems_leaves"),
+                      stems_and_leaves = c("stem_leaves", "leaf_stem", "leaves_stem", "stems_leaves"),
                       petioles = c("petioles", "plant_petioles"),
                       shoots = "plant_shoot",
                       roots_and_leaves = "roots_leaves",
@@ -136,8 +136,7 @@ DetNut3<-DetNut2%>%
                                                 dm_afdm_mix = "dm_afdm"))%>%
   mutate(Detritus_Condition = fct_collapse(Detritus_Condition,
                                          senesced = c("scenesced","senescent"),
-                                         green = c("fresh", "green"),
-                                         dried_wood = "fresh_dried"))%>%
+                                         fresh = c("fresh", "green")))%>%
   mutate(Detritus_Species = str_replace_all(Detritus_Species,"_", " "))%>%
   mutate(Journal = str_replace_all(Journal,"_"," "),
          Journal = str_remove_all(Journal, "\UFFFD"),
@@ -165,20 +164,27 @@ DetNut3<-DetNut2%>%
   mutate(Geog_Locale = str_replace_all(Geog_Locale,"_"," "),
          Geog_Locale = str_remove_all(Geog_Locale, "\UFFFD"))%>%
   mutate(Lat_Long = str_replace_all(Lat_Long, "_", ","))%>%
-  #fill in any ratios that could have been calculated, but are not there
-  mutate(CN_ratio = case_when(is.na(CN_ratio) ~ ((C_per/N_per)*(14/12)),
+  #if both elemental percents for ratio are present calculate to ensure molar,
+  mutate(CN_ratio = case_when(!is.na(C_per) & !is.na(N_per) & is.na(CNP_Ratio_Type) ~ ((C_per/N_per)*(14/12)),
                               TRUE ~ CN_ratio),
-         CP_ratio = case_when(is.na(CP_ratio) ~ ((C_per/P_per)*(31/12)),
+         CP_ratio = case_when(!is.na(C_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ ((C_per/P_per)*(31/12)),
                               TRUE ~ CP_ratio),
-         NP_ratio = case_when(is.na(NP_ratio) ~ ((N_per/P_per)*(31/14)),
-                              TRUE ~ NP_ratio))
+         NP_ratio = case_when(!is.na(N_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ ((N_per/P_per)*(31/14)),
+                              TRUE ~ NP_ratio))%>%
+  mutate(CNP_Ratio_Type = case_when(!is.na(C_per) & !is.na(N_per) & is.na(CNP_Ratio_Type) ~ "molar", 
+                                    TRUE ~ CNP_Ratio_Type),
+         CNP_Ratio_Type = case_when(!is.na(C_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ "molar", 
+                                    TRUE ~ CNP_Ratio_Type),
+         CNP_Ratio_Type = case_when(!is.na(N_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ "molar", 
+                                    TRUE ~ CNP_Ratio_Type))
+
 
 
 ```
 
 Not all Start_Date entries have all information (e.g., some papers report only year or month of incubation start, or not clear at all). Following converts the many (and non-standard) formats of dates found in Start_Date column to separate (Start_)Year, Month, and Day columns.
  
-```{r reconcile date formatting}
+```{r reconcile date formatting and remove non-UTF-8 characters}
 
 DetNut4 <- DetNut3%>%
 #create helper column to parse standard date formats - sets up a flag by which to conditionally operate on only non-standard dates with the Start_Date column. Will fix non-parsers in next step.
@@ -197,11 +203,17 @@ DetNut4 <- DetNut3%>%
 #convert month names to month numbers
          Start_Month = ifelse(str_detect(Start_Month,"^[:alpha:]+$"), match(Start_Month, month.name), Start_Month),
          Start_Day = day(Start_Date2))%>% #only standard date formats included days, so just pull from there
-  select(-Start_Date, Start_Date2) #remove Start_Date cols - no longer needed
+  select(-Start_Date, -Start_Date2)%>% #remove Start_Date cols - no longer needed
+  relocate(Start_Year, Start_Month, Start_Day, .after = Meas_Day)|>
+  #remove non-UTF-8 characters from any strings
+  mutate(across(.cols = everything(), ~iconv(., "UTF-8", "UTF-8",sub='')))
 
 ```
+
+
 
 {r write tidied database}
 #write current version of database file - currently goes to computer working directory
 DetNut4%>%
-  write_csv("DetNutSynth_Database.csv")
+  write_csv("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/DetNutSynth_Database_30Aug2022.csv")
+

@@ -1,0 +1,373 @@
+---
+title: "DetNut_Data_Summary"
+output:
+  pdf_document: default
+  html_document: default
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, fig.width = 3, fig.height = 2)
+library(tidyverse)
+library(magrittr)
+library(datawizard)
+library(EDIutils)
+```
+
+```{r read datafile, include = FALSE, message = FALSE, warning = FALSE}
+
+
+det <- read_csv("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/DetNutSynth_Database_30Aug2022.csv")
+
+
+```
+
+
+```{r create new summary variables, include=FALSE}
+det2 <- det%>%
+  group_by(First_Author, Publication_Title, Time_Series_ID)%>%
+  mutate(series_index = group_indices())%>%#creates a unique index for each time series
+  ungroup()%>%
+  group_by(series_index)%>% #functionally, used to confine any window functions like first() to a time series rather than the first observation of whole dataframe
+  mutate(initial_C = first(C_per),
+         initial_N = first(N_per),
+         initial_P = first(P_per),
+         initial_CN = first(CN_ratio),
+         initial_CP = first(CP_ratio),
+         initial_NP = first(NP_ratio),
+         initial_Lignin = first(Lignin_per))%>%
+  #next normalizes CNP values to initial measurements for each time series and to initial masses as in Manzoni
+  mutate(C_prop_initial = C_per/first(C_per),
+         N_prop_initial = N_per/first(N_per),
+         P_prop_initial = P_per/first(P_per),
+         C_mass_norm = ((C_per/100)*Mass_per_remaining)/(first(C_per/100)*first(Mass_per_remaining)),
+         N_mass_norm = ((N_per/100)*Mass_per_remaining)/(first(N_per/100)*first(Mass_per_remaining)),
+         P_mass_norm = ((P_per/100)*Mass_per_remaining)/(first(P_per/100)*first(Mass_per_remaining)))%>%
+  #fill in any places where ratios could have been calculated, but weren't
+
+  #next approximates percent mass remaining (if not provided) at each measurement day from k value
+  mutate(Mass_per_remaining = case_when(is.na(Mass_per_remaining) & Remain_Mass_Category == "afdm" ~ exp(-k*Meas_Day)*100,
+                                        is.na(Mass_per_remaining) & Remain_Mass_Category == "dm" ~ exp(-k*Meas_Day)*100,
+                                        TRUE ~ Mass_per_remaining))%>%
+  #remove text from variable if not coarse fine or open
+
+  mutate(mesh_cat = case_when(Mesh_Size_Category == "coarse" | Mesh_Size_Category == "fine" | Mesh_Size_Category == "open" ~ Mesh_Size_Category,
+                              Mesh_Size_Category < 1 ~ "fine",
+                              Mesh_Size_Category >= 1 ~ "coarse"))%>%
+ 
+  mutate(Lotic_Lentic = case_when(System == "stream"|System == "Stream"|System == "Channel"|System == "river" ~ "Lotic",
+                                  System == "wetland"|System == "Wetland"|System == "wetlands"|System == "marsh"|System == "lake"|System == "Lake"|System == "pond"|System == "reservoir" ~ "Lentic",
+                                  TRUE ~ System),
+         Lotic_Lentic = as_factor(Lotic_Lentic))%>%
+  mutate(series_index = as_factor(series_index),
+         Mass_per_loss = 100-(Mass_per_remaining),
+         mesh_cat = as_factor(mesh_cat),
+         Remain_Mass_Category = as_factor(Remain_Mass_Category))
+  
+
+```
+
+```{r}
+  det3<-det2%>%
+  mutate(Detritus_Type=as_factor(Detritus_Type),
+         Detritus_Type = fct_collapse(Detritus_Type, Leaves = "leaves", Wood = c("branch", "heartwood", "wood_veneer"), Dung_or_Carcass = c("dung","carcass"), other_level = "Macrophyte"))%>%
+  ungroup()
+
+levels(det3$Detritus_Type)
+```
+
+
+```{r summarize data distributions for numeric variables}
+det_distros<-det2%>%
+  discard(~!is.numeric(.))%>% #keeps only numeric variables
+describe_distribution()%>%
+  slice(1:31)%>% #keeps the main recorded vars/excludes lots of the 'created' or summarized variables from earlier chunk
+  filter(Variable != "Publication_Year"&Variable != "Time_Series_ID")
+det_distros
+```
+Notes:
+-Some very high nutrient values (e.g., Gamage et al nitrogen) can be recorded in beaker studies where water isn't replaced
+
+
+```{r}
+#Summarize each variable
+meta_table <- read_csv("C:/Users/caleb/Desktop/detnut_metadata.csv",locale=locale(encoding="latin1"))|>
+  pivot_longer(cols = 2:65, names_to = "variable")|>
+pivot_wider(names_from = `Column Name:`)|>select(-`NA`)|>mutate(variable = str_trim(variable),
+                                                                `Storage Type:` = str_trim(`Storage Type:`))
+
+#calculate max and min for each variable, pivot and join to meta_table
+min_max <- list(
+  min = ~min(.x, na.rm = TRUE), 
+  max = ~max(.x, na.rm = TRUE)
+)
+det_var_sums <- det |>ungroup() |>mutate(Start_Year = case_when(First_Author == "Driebe" ~as.numeric(str_remove(Start_Year, "-"))+1900,
+                                                                                       First_Author == "Gomez" ~as.numeric(str_remove(Start_Year, "-"))+2000, 
+                                                                                       TRUE ~ Start_Year))|> summarize(across(where(is.numeric), min_max,.names = "{.fn}__{.col}"))|>
+  pivot_longer(cols = everything(), names_to= c("name", "variable"), names_sep = "__")|>
+  pivot_wider()|>mutate(max = round(max, digits = 2), min = round(min, digits = 2))
+
+
+var_info_table <- left_join(meta_table,det_var_sums, by = "variable")|>
+  mutate(`Numeric Range` = str_c(min,max, sep = ", "), .keep = "unused")|>
+select(-`Measurement Type:`)|>
+  rename(Description = "Definition:", Variable = "variable", `Variable Type` = "Storage Type:")
+
+
+var_info_table|>write_csv("C:/Users/caleb/Desktop/DetNut_Metatable.csv")
+
+```
+
+
+```{r histogram contrinuous variables,message = FALSE, warning = FALSE}
+#extract row names
+det_names <- det_distros%>%
+  pull(Variable)
+
+histo.f<-function(x){
+  ggplot(det2, aes(.data[[x]]))+
+    geom_histogram()
+}
+
+map(det_names, histo.f)
+
+```
+
+```{r summarize  character variables}
+det_chars<-det2%>%
+  discard(~is.numeric(.))%>% #excludes numeric variables
+  #then this should use a tidy version of unique to look at the unique levels for many of the variables that are not descriptive, which can be filtered out
+ map(fct_count)
+  
+det_chars
+```
+
+
+
+
+```{r aggregated summaries}
+#this will create a nested dataframe (the data are included as a column within the larger dataframe) that can be used to look at characteristics of each time series, rather than the  data overall. This may have limited application, but can also be expanded.
+
+DetNut.nest <- det2%>%
+  group_by(First_Author, Publication_Title, Journal, series_index)%>%
+  nest()%>%
+  mutate(System = map_chr(data, ~first(.$System)),
+         Lotic_Lentic = map_chr(data, ~first(.$Lotic_Lentic)),
+         Detritus_Condition = map_chr(data, ~first(.$Detritus_Condition)),
+         Detritus_Species = map_chr(data, ~first(.$Detritus_Species)),
+         Detritus_Type = map_chr(data, ~first(.$Detritus_Type)),
+         Decay_Method = map_chr(data, ~first(.$Decay_Method)),
+         initial_C = map_dbl(data, ~first(.$initial_C)),
+         initial_N = map_dbl(data, ~first(.$initial_N)),
+         initial_P = map_dbl(data, ~first(.$initial_P)),
+         initial_CN = map_dbl(data, ~first(.$initial_CN)),
+         initial_CP = map_dbl(data, ~first(.$initial_CP)),
+         initial_NP = map_dbl(data, ~first(.$initial_NP)),
+         initial_Lignin = map_dbl(data, ~first(.$initial_Lignin)))%>%
+  #count observations per series
+  mutate(Series_Measurements = map_dbl(data, nrow),
+         C_counts = map_dbl(data, ~sum(!is.na(.$C_per))),
+         N_counts = map_dbl(data, ~sum(!is.na(.$N_per))),
+         P_counts = map_dbl(data, ~sum(!is.na(.$P_per))),
+         CN_counts = map_dbl(data, ~sum(!is.na(.$CN_ratio))),
+         CP_counts = map_dbl(data, ~sum(!is.na(.$CP_ratio))),
+         NP_counts = map_dbl(data, ~sum(!is.na(.$NP_ratio))))
+
+DetNut.nest2 <- det2%>%
+  group_by(First_Author, Publication_Title, Journal, series_index)%>%
+  summarize(length = n())|>
+  ungroup()|>
+  summarize(avg.length = mean(length))
+```
+
+
+
+```{r}
+DetNut_species<- det2%>%
+  ungroup()%>%
+  summarize(n_species = n_distinct(Detritus_Species))
+
+DetNut_types<- det2%>%
+  ungroup()%>%
+  count(Detritus_Type)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_systems<- det2%>%
+  ungroup()%>%
+  count(System)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_lotlentype<- det2%>%
+   ungroup()%>%
+  filter(Lotic_Lentic == "Lotic"|Lotic_Lentic == "Lentic")%>%
+  count(Lotic_Lentic, Detritus_Type)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_lotlen<- det2%>%
+  ungroup()%>%
+  filter(Lotic_Lentic == "Lotic"|Lotic_Lentic == "Lentic")%>%
+  count(Lotic_Lentic)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+
+DetNut_systemstypes<- det2%>%
+  ungroup()%>%
+  count(System, Detritus_Type)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+ 
+DetNut_systemstypescond<- det2%>%
+  ungroup()%>%
+  count(System, Detritus_Type, Detritus_Condition)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+ 
+DetNut_typescond<- det2%>%
+  ungroup()%>%
+  count(Detritus_Type, Detritus_Condition)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_taxa<- det2%>%
+  ungroup()%>%
+  count(Detritus_Species)%>%
+  mutate(proportion = n/sum(n))%>%
+  arrange(desc(proportion))
+
+DetNut_species
+DetNut_types
+DetNut_systems
+DetNut_lotlentype
+DetNut_lotlen
+DetNut_systemstypes
+DetNut_systemstypescond
+DetNut_typescond
+
+```
+
+
+
+```{r}
+cbbPalette1 <- c("#E69F00", "#56B4E9","#D55E00","#009E73")
+cbbPalette2 <- c("#999999", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+DetNut_types<- det3%>%
+  group_by(Detritus_Type)%>%
+  summarize(across(c(C_per, N_per, P_per, CN_ratio,CP_ratio,NP_ratio), ~sum(!is.na(.x))))|>
+  pivot_longer(c(C_per, N_per, P_per, CN_ratio,CP_ratio,NP_ratio))|>
+  mutate(Detritus_Type=fct_recode(Detritus_Type, `Dung or Carcass` = "Dung_or_Carcass"),
+         name = fct_relevel(name, "C_per", "N_per", "P_per", "CN_ratio","CP_ratio","NP_ratio"),
+         name = fct_recode(name, `C (%)`="C_per", `N (%)`="N_per", `P (%)`="P_per", `C:N`="CN_ratio",`C:P`="CP_ratio",`N:P`="NP_ratio"))
+
+
+
+det_type.p<-ggplot(DetNut_types, aes(y = value, x = name,  fill = Detritus_Type))+
+  geom_bar(stat = "identity", color = "black", width = 0.75)+
+  scale_fill_manual(values=cbbPalette2)+
+  ylab("Observations")+
+  xlab("Variable")+
+  guides(fill=guide_legend(title="Detritus Type"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
+  theme(legend.position = "none")
+
+
+DetNut_system<- det3%>%
+  mutate(System = fct_collapse(System, Lake = "lake", Stream = c("stream", "river"), Wetland = "wetland"),
+         System = fct_explicit_na(System, "Lab or Mesocosm"))|>
+  group_by(System)%>%
+  summarize(across(c(C_per, N_per, P_per, CN_ratio,CP_ratio,NP_ratio), ~sum(!is.na(.x))))|>
+  pivot_longer(c(C_per, N_per, P_per, CN_ratio,CP_ratio,NP_ratio))|>
+  mutate(name = fct_relevel(name, "C_per", "N_per", "P_per", "CN_ratio","CP_ratio","NP_ratio"),
+         name = fct_recode(name, `C (%)`="C_per", `N (%)`="N_per", `P (%)`="P_per", `C:N`="CN_ratio",`C:P`="CP_ratio",`N:P`="NP_ratio"))
+
+det_sys.p<-ggplot(DetNut_system, aes(y = value, x = name,  fill = System))+
+  geom_bar(stat = "identity", color = "black", width = 0.75)+
+  scale_fill_manual(values=cbbPalette1)+
+  ylab("Observations")+
+  xlab("Variable")+
+  guides(fill=guide_legend(title="System"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
+  theme(legend.position = "none")
+
+det_sys.p
+
+```
+
+
+```{r plots by series}
+
+
+DetNut_ser_type<- DetNut.nest%>%
+  mutate(Detritus_Type=as_factor(Detritus_Type),
+         Detritus_Type = fct_collapse(Detritus_Type, Leaves = "leaves", Wood = c("branch", "heartwood", "wood_veneer"), Dung_or_Carcass = c("dung","carcass"), other_level = "Macrophyte"))|>
+  group_by(Detritus_Type)%>%
+  summarize(across(c(initial_C, initial_N, initial_P, initial_CN,initial_CP,initial_NP), ~sum(!is.na(.x))))|>
+  pivot_longer(c(initial_C, initial_N, initial_P, initial_CN,initial_CP,initial_NP))|>
+  mutate(Detritus_Type=fct_recode(Detritus_Type, `Dung or Carcass` = "Dung_or_Carcass"),
+         name = fct_relevel(name, "initial_C", "initial_N", "initial_P", "initial_CN","initial_CP","initial_NP"),
+         name = fct_recode(name, `C (%)`="initial_C", `N (%)`="initial_N", `P (%)`="initial_P", `C:N`="initial_CN",`C:P`="initial_CP",`N:P`="initial_NP"))
+
+det_ser_type.p<-ggplot(DetNut_ser_type, aes(y = value, x = name,  fill = Detritus_Type))+
+  geom_bar(stat = "identity", color = "black", width = 0.75)+
+  scale_fill_manual(values=cbbPalette2)+
+  ylab("# Time Series")+
+  xlab("Variable")+
+  guides(fill=guide_legend(title="Detritus Type"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))
+#retrieve legend and then remove from main plot
+type.legend <- get_legend(det_ser_type.p)
+
+det_ser_type.p <- det_ser_type.p+theme(legend.position = "none")
+
+
+DetNut_ser_system<- DetNut.nest%>%
+  mutate(System = as_factor(System),
+         System = fct_collapse(System, Lake = "lake", Stream = c("stream", "river"), Wetland = "wetland"),
+         System = fct_explicit_na(System, "Lab or Mesocosm"))|>
+  group_by(System)%>%
+  summarize(across(c(initial_C, initial_N, initial_P, initial_CN,initial_CP,initial_NP), ~sum(!is.na(.x))))|>
+  pivot_longer(c(initial_C, initial_N, initial_P, initial_CN,initial_CP,initial_NP))|>
+  mutate(name = fct_relevel(name, "initial_C", "initial_N", "initial_P", "initial_CN","initial_CP","initial_NP"),
+         name = fct_recode(name, `C (%)`="initial_C", `N (%)`="initial_N", `P (%)`="initial_P", `C:N`="initial_CN",`C:P`="initial_CP",`N:P`="initial_NP"))
+
+det_ser_sys.p<-ggplot(DetNut_ser_system, aes(y = value, x = name,  fill = System))+
+  geom_bar(stat = "identity", color = "black", width = 0.75)+
+  scale_fill_manual(values=cbbPalette1)+
+  ylab("# Time Series")+
+  xlab("Variable")+
+  guides(fill=guide_legend(title="System"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))
+
+sys.legend <- get_legend(det_ser_sys.p)
+
+det_ser_sys.p <- det_ser_sys.p+theme(legend.position = "none")
+
+
+
+```
+
+
+
+```{r}
+g1 <- plot_grid(det_sys.p, det_ser_sys.p,sys.legend, nrow = 1, rel_widths = c(1,1,0.3))
+
+
+g2 <- plot_grid(det_type.p, det_ser_type.p,type.legend, nrow = 1, rel_widths = c(1,1,0.3))
+
+
+
+# remove legend from det_sys.p and det_type.p
+
+plot_grid(g1, g2, nrow = 2)
+
+```
+
+
