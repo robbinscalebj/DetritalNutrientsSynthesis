@@ -11,12 +11,15 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(janitor)
 library(lubridate)
+library(here)
+
 ```
 
 
 ```{r Set working directory}
-#Set working directory to location of files
-DetNut_Files<-list.files("Final Proofed Files", full.names = TRUE) #Obviously change this to where you need to
+here::i_am("Tidy Data and Summarize/DetNut_Tidy_Database_30Aug2022.Rmd")
+here()
+DetNut_Files<-list.files("Final Proofed Files", full.names = TRUE) 
 head(DetNut_Files)
 
 ```
@@ -65,7 +68,7 @@ DetNut<-DetNut_Files%>%
          )
 
 names(DetNut) <- DetNut_Files%>%
-  str_remove("/Users/robbi/Dropbox/Detrital Nutrients Synth/Synthesis Data txt Files/")
+  str_remove("Final Proofed Files/")
 # pulls names to make it easier to identify later
 
 ```
@@ -213,7 +216,7 @@ DetNut4 <- DetNut3%>%
 
 
 {r write tidied database}
-#write current version of database file - currently goes to computer working directory
+#write current version of database file 
 DetNut4%>%
-  write_csv("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/DetNutSynth_Database_30Aug2022.csv")
+  write_csv(here("Tidy Data and Summarize/DetNutSynth_Database_30Aug2022.csv"))
 

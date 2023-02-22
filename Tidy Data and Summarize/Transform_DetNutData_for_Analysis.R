@@ -1,5 +1,5 @@
 
-#The purpose of this script is to tidy the data used for analysis
+#The purpose of this script is to tidy the data used for analysis in the Detrital Nutrients ms
 #This script created using R 4.1.2
 
 
@@ -11,6 +11,7 @@ library(gratia)
 library(mgcv)
 library(tidymv)
 library(RColorBrewer)
+library(here)
 
 #Set up plot themes
 plot_theme <- theme(panel.grid = element_blank(), 
@@ -29,9 +30,9 @@ deriv_plot_theme <- theme(axis.text = element_text(size = 14, face = "bold"),
                           legend.position = c(0.87,0.7))
 
 #Read raw dataset
-det_raw <- read_csv("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Code/DetNutSynth_Database_30Aug2022.csv")
 
-
+here::i_am("Tidy Data and Summarize/Transform_DetNutData_for_Analysis.R")
+det_raw <- read_csv(here("Tidy Data and Summarize/DetNutSynth_Database_30Aug2022.csv"))
 
 #Variables for analysis
 det <- det_raw%>%
@@ -127,6 +128,6 @@ det_loc_cnp <- det_loc%>%filter(CNP_Ratio_Type == "molar")
 
 
 
-save.image("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Code/DetNut_Data_for_Analysis.Rdata")
+save.image(here("Tidy Data and Summarize/DetNut_Data_for_Analysis.Rdata"))
 
 

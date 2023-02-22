@@ -4,19 +4,21 @@ output:
   pdf_document: default
   html_document: default
 ---
-
+# This script is just haphazard visualizations not used in the Detritral Nutrients ms.
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, fig.width = 3, fig.height = 2)
 library(tidyverse)
 library(magrittr)
 library(datawizard)
 library(EDIutils)
+library(here)
+here::i_am("Tidy Data and Summarize/DetNut_Data_Summary.Rmd")
 ```
 
 ```{r read datafile, include = FALSE, message = FALSE, warning = FALSE}
 
 
-det <- read_csv("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/DetNutSynth_Database_30Aug2022.csv")
+det <- read_csv(here("Tidy Data and Summarize/DetNutSynth_Database_30Aug2022.csv"))
 
 
 ```

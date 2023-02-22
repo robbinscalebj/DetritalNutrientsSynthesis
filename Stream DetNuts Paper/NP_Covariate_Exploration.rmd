@@ -19,6 +19,9 @@ library(gratia)
 library(mgcv)
 library(tidymv)
 library(RColorBrewer)
+library(here)
+here::i_am("Stream DetNuts Paper/NP_Covariate_Exploration.Rmd")
+load(here("Tidy Data and Summarize/DetNut_Data_for_Analysis.Rdata"))
 
 ```
 
@@ -28,14 +31,6 @@ Need to consider covariate structure
 ggplot(data=det_loc, aes(x = Temperature_C_avg))+geom_histogram() #Temp is fairly evenly distributed
 ggplot(data=det_loc, aes(x = Velocity_m.s))+geom_histogram() #okay coverage, but low quantity
 ggplot(data=det_loc, aes(x = pH))+geom_histogram()
-
-ggplot(data=det_loc, aes(x = TN_approx))+geom_histogram() #relatively few data sit above 7500 ug/L, where the rest of the dataset is mostly below 2500 ug/L - it would be appropriate to remove those as they could be strong leveraging points but represent a very small portion of the dataset.
-det_loc_tn <- det_loc%>%filter(TN_approx<7500)
-
-ggplot(data=det_loc, aes(x = TP_approx))+geom_histogram() #Again, one grouping of data is very high relative to the rest of the dataset, and could be strong leveraging points, so we will remove those
-det_loc_tp <- det_loc%>%filter(TP_approx <2000)
-
-det_loc<-det_loc%>%mutate(N_mass = N_per*Mass_per_remaining)
 
 ```
 
@@ -228,45 +223,14 @@ CN_T.pred<-predict_gam(type = "link", CN_temp, length_out = 5000,  exclude_terms
 ```
 
 
-```{r categorized temp attempt}
-#visualize and bin temperature
-det_cnp_temp<- det_loc_cnp|>
-  mutate(Temp_cat = as_factor(case_when(Temperature_C_avg<=10 ~ "Low",
-                              Temperature_C_avg>10 &Temperature_C_avg<=18 ~ "Med",
-                              Temperature_C_avg>18 ~ "High")))|>
-  filter(!is.na(Temp_cat))
 
-
-  CN_temp <- gam(data = det_cnp_temp, CN_ratio ~  
-                  ti(Mass_per_loss, m = 2, k = 8) + ti(initial_CN, m = 2)+
-                  ti(Mass_per_loss, initial_CN, m = 2)+
-               ti(Mass_per_loss,initial_CN, by=Temp_cat)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
- 
-   CN_T.pred<-predict_gam(type = "link", CN_temp, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),Temp_cat = c("Low","Med", "High")))%>%
-   mutate(Temp_cat = as_factor(Temp_cat), initial_CN = as_factor(initial_CN))
-  
-
- CN_T.p<- ggplot(data = CN_T.pred)+
-    geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = Temp_cat, linetype = Temp_cat))+
-   facet_grid(initial_CN~Temp_cat, scales = "free")+
-   geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
-   ylab("C:N (molar)")+
-   xlab("Mass loss (%)")+ggtitle("Temperature x C:N")+theme(legend.position ="none")+
-  NULL
- CN_T.p
-
-```
 Temp significant change in curves - plot derivatives. 
 
-This takes a long time run fitted_samples() with 5000 draws (maybe 15 minutes or more), so the object important in running the plot has been saved as an .rds file.
-
-This can be read in with CNxTemp_deriv_samples <- readRDS("Model_Objects/CN_temp_derivs.rds") where file connection is set to correct working directory where .rds file is stored.
+This takes a long time run fitted_samples() with 10000 draws (maybe 15 minutes or more)
 ```{r Temp covar curve derivatives}
 
 CNxTemp_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), Temperature_C_avg = c(7.5,10,15,20),initial_CN = c(25,40,50,70,100,140), series_index = 4)
-n_draws <- 500
+n_draws <- 10000
 CNxTemp_mass_grid_exp <- map_dfr(seq_len(n_draws), ~CNxTemp_mass_grid)
 
 
@@ -278,7 +242,7 @@ CNxTemp_gam_fitted <- fitted_samples(CN_temp, exclude = c("s(series_index)", "s(
 CNxTemp_deriv_samples <- CNxTemp_gam_fitted%>%arrange(initial_CN, Temperature_C_avg)%>%group_by(draw, initial_CN,Temperature_C_avg)%>%mutate(fit_dif = (fitted-lag(fitted))/0.2)%>%mutate(Mass_per_loss = as_factor(Mass_per_loss))%>%ungroup()%>%
   group_by(initial_CN,Temperature_C_avg, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
 
-#export object because it took about 15 minutes to create with 5000 draws...
+#export object because it took about 15 minutes to create with 10000 draws...
 #saveRDS(CNxTemp_deriv_samples,"Model_Objects/CN_temp_derivs.rds")
 
 
@@ -304,190 +268,11 @@ CNxTemp_deriv.p2
 ```{r cowplot N mass and deriv plots}
 
 CN_temp_grid <- plot_grid(CN_T.p,CNxTemp_deriv.p, nrow = 2, labels = "AUTO", label_size = 15)
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/CNxTemp_r1.pdf", CN_temp_grid, width = 7.8, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/CNxTemp_r1.pdf", CN_temp_grid, width = 7.8, height = 9.1, dpi = 600)
 
 ```
 
-#TN exploration
 
-```{r CN X TN}
-
-CN_tn_ml <- gam(data = det_loc_cnp, CN_ratio ~  
-                  ti(Mass_per_loss, m = 2, k = 8) + ti(initial_CN, m = 2)+
-                  ti(Mass_per_loss, initial_CN, m = 2)+
-               ti(Mass_per_loss,initial_CN, TN_approx, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
-
-CN_tn <- gam(data = det_loc_cnp, CN_ratio ~  
-                  ti(Mass_per_loss, m = 2, k = 8) + ti(initial_CN, m = 2)+
-                  ti(Mass_per_loss, initial_CN, m = 2)+
-               ti(Mass_per_loss,initial_CN, TN_approx, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-summary(CN_tn_ml)
-appraise(CN_tn)
-
-###saveRDS(CN_tn,"Model_Objects/CN_tn.rds")
-##CN_tn <- readRDS("Model_Objects/CN_tn.rds")
-
-CN_TN.pred<-predict_gam(type = "link", CN_tn, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),TN_approx = c(300,600,1000,1500)))%>%
-   mutate(TN_approx = as_factor(TN_approx), initial_CN = as_factor(initial_CN))
-  
-
-
- CN_TN.p<- ggplot(data = CN_TN.pred%>%
-                    mutate(TN_approx = fct_recode(TN_approx, "300 ug/L" = "300", "600 ug/L" = "600", "1000 ug/L" = "1000", "1500 ug/L" = "1500")))+
-    geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = TN_approx, linetype = TN_approx))+
-   facet_grid(initial_CN~TN_approx, scales = "free")+
-   geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
-   #scale_y_continuous(trans = "log")+
-   ylab("C:N (molar)")+
-   xlab("Mass loss (%)")+ggtitle("Total Nitrogen x C:N")+theme(legend.position = "none")+
-    NULL
- CN_TN.p
- 
-
-```
-
-TN significant change in curves - now plot the derivatives. 
-
-This takes a long time run fitted_samples() with 5000 draws (maybe 15 minutes or more), so the object important in running the plot has been saved as an .rds file.
-
-This can be read in with CNxTN_deriv_samples <- readRDS("Model_Objects/CN_tn_derivs.rds") where file connection is set to correct working directory where .rds file is stored.
-```{r TN covar curve derivatives}
-
-CNxTN_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), initial_CN = c(25,40,50,70,100,140), TN_approx = c(300,600,1000,1500), series_index = 578)
-n_draws <- 5000
-CNxTN_mass_grid_exp <- map_dfr(seq_len(n_draws), ~CNxTN_mass_grid)
-
-
-CNxTN_gam_fitted <- fitted_samples(CN_tn, exclude = "s(series_index,Mass_per_loss", n = n_draws, newdata = CNxTN_mass_grid, seed = 1)%>%
-  bind_cols(CNxTN_mass_grid_exp)%>%mutate(initial_CN = as_factor(initial_CN), TN_approx = as_factor(TN_approx), draw = as_factor(draw), fitted = log(fitted))
-#log transformed fitted values because *ratios*
-
-
-CNxTN_deriv_samples <- CNxTN_gam_fitted%>%arrange(initial_CN, TN_approx)%>%group_by(draw, initial_CN,TN_approx)%>%mutate(fit_dif = (fitted-lag(fitted))/0.2)%>%mutate(Mass_per_loss = as_factor(Mass_per_loss))%>%ungroup()%>%
-  group_by(initial_CN,TN_approx, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
-
-#export object because it took about 15 minutes to create with 5000 draws...
-#saveRDS(CNxTN_deriv_samples,"Model_Objects/CN_tn_derivs.rds")
-
-CNxTN_deriv.p<-ggplot(data = CNxTN_deriv_samples%>%
-                  mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)),
-                         TN_approx = fct_recode(TN_approx, "300 ug/L" = "300", "600 ug/L" = "600", "1000 ug/L" = "1000", "1500 ug/L" = "1500"))%>%
-                  filter(Mass_per_loss>0))+
-         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)), size = 1)+
-  geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
-  geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
-         facet_grid(initial_CN~TN_approx, scales = "free")+
-  scale_y_continuous(trans="log")+
-  geom_hline(yintercept = 1)+
-  ylab("Rate of Change (Log C:N/Mass loss)")+
-  xlab("Mass Loss (%)")+
-  theme_bw()+deriv_plot_theme+
-  NULL
-CNxTN_deriv.p
-
-```
-
-```{r cowplot N mass and deriv plots}
-
-CN_TN_grid <- plot_grid(CN_TN.p,CNxTN_deriv.p, nrow = 2, labels = "AUTO", label_size = 15)
-ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/CNxTN.pdf", CN_TN_grid, width = 7.8, height = 9.1, dpi = 600)
-
-```
-
-#TP exploration
-Load model object with CN_tp<-readRDS("Model_Objects/CN_tp.rds")
-```{r CN X TP}
-
-
-
-CN_tp_ml <- gam(data = det_loc_cnp, CN_ratio ~  
-                  ti(Mass_per_loss, m = 2, k = 8) + ti(initial_CN, m = 2)+
-                  ti(Mass_per_loss, initial_CN, m = 2)+
-               ti(Mass_per_loss,initial_CN, TP_approx, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
-
-
-CN_tp <- gam(data = det_loc_cnp, CN_ratio ~  
-                  ti(Mass_per_loss, m = 2) + ti(initial_CN, m = 2)+
-                  ti(Mass_per_loss, initial_CN, m = 2)+
-               ti(Mass_per_loss,initial_CN, TP_approx, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
-
-summary(CN_tp_ml)
-appraise(CN_tp)
-
-###saveRDS(CN_tp,"Model_Objects/CN_tp.rds")
-
-CN_TP.pred<-predict_gam(type = "link", CN_tp, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),TP_approx = c(50,100,300,500)))%>%
-   mutate(TP_approx = as_factor(TP_approx), initial_CN = as_factor(initial_CN))
-  
-
-
- CN_TP.p<- ggplot(data = CN_TP.pred%>%
-                  mutate(TP_approx = fct_recode(TP_approx, "50 ug/L" = "50", "100 ug/L" = "100", "300 ug/L" = "300", "500 ug/L" = "500")))+
-   geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = TP_approx, linetype = TP_approx))+
-   facet_grid(initial_CN~TP_approx, scales = "free")+
-   geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
-   ylab("C:N (molar)")+
-   xlab("Mass loss (%)")+
-   ggtitle("Total Phosphorus x C:N")+
-   theme(legend.position = "none")+
-    NULL
- CN_TP.p
- 
-
-```
-
-CNxTP_deriv_samples <- readRDS("Model_Objects/CN_tp_derivs.rds")
-```{r TN covar curve derivatives}
-
-CNxTP_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), initial_CN = c(25,40,50,70,100,140), TP_approx = c(50,100,300,500), series_index = 578)
-n_draws <- 5000
-CNxTP_mass_grid_exp <- map_dfr(seq_len(n_draws), ~CNxTP_mass_grid)
-
-
-CNxTP_gam_fitted <- fitted_samples(CN_tp, exclude = "s(series_index,Mass_per_loss", n = n_draws, newdata = CNxTP_mass_grid, seed = 1)%>%
-  bind_cols(CNxTP_mass_grid_exp)%>%mutate(initial_CN = as_factor(initial_CN), TP_approx = as_factor(TP_approx), draw = as_factor(draw), fitted = log(fitted))
-#log transformed fitted values because *ratios*
-
-
-CNxTP_deriv_samples <- CNxTP_gam_fitted%>%arrange(initial_CN, TP_approx)%>%group_by(draw, initial_CN,TP_approx)%>%mutate(fit_dif = (fitted-lag(fitted))/0.2)%>%mutate(Mass_per_loss = as_factor(Mass_per_loss))%>%ungroup()%>%
-  group_by(initial_CN,TP_approx, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
-
-#export object because it took about 15 minutes to create with 5000 draws...
-#saveRDS(CNxTP_deriv_samples,"Model_Objects/CN_tp_derivs.rds")
-
-CNxTP_deriv.p<-ggplot(data = CNxTP_deriv_samples%>%
-                  mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)),
-                         TP_approx = fct_recode(TP_approx, "50 ug/L" = "50", "100 ug/L" = "100", "300 ug/L" = "300", "500 ug/L" = "500"))%>%
-                  filter(Mass_per_loss>0))+
-         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)), size = 1)+
-  geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
-  geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
-         facet_grid(initial_CN~TP_approx, scales = "free")+
-  scale_y_continuous(trans="log")+
-  geom_hline(yintercept = 1)+
-  ylab("Rate of Change (Log C:N/Mass loss)")+
-  xlab("Mass Loss (%)")+
-  theme_bw()+deriv_plot_theme+
-  NULL
-CNxTP_deriv.p
-
-```
-
-```{r cowplot plots}
-
-CN_TP_grid <- plot_grid(CN_TP.p,CNxTP_deriv.p, nrow = 2, labels = "AUTO", label_size = 15)
-ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/CNxTP.pdf", CN_TP_grid, width = 7.8, height = 9.1, dpi = 600)
-
-```
 #P mass exploratory models 
 
 None of these will fit - tried all covariates with P and C:P. Just not enough data for three-way tensor interactions and REs 
@@ -498,7 +283,7 @@ None of these will fit - tried all covariates with P and C:P. Just not enough da
 Pi_temp_ml <- gam(data = det_loc, P_mass ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_P, m = 2)+
                   ti(Mass_per_loss, initial_P, m = 2)+
-               ti(Mass_per_loss,initial_P, Temperature_C_avg, m = 2)+
+               ti(Mass_per_loss,initial_P, Temperature_C_avg, m = 1)+
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs ="re"), 
                    method = "ML", family = Gamma(link = "identity"),select = TRUE) 
 
@@ -518,7 +303,7 @@ CP_base1 <- gam(data = det_loc_cnp, CP_ratio ~
 CP_temp_ml <- gam(data = det_loc_cnp, CP_ratio ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_CP, m = 2)+
                   ti(Mass_per_loss, initial_CP, m = 2)+
-               ti(Mass_per_loss,initial_CP, TP_approx, m = 2)+
+               ti(Mass_per_loss,initial_CP, TP_approx, m = 1)+
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs ="re"), 
                    method = "ML", family = gaussian(link = "identity"),select = TRUE) 
 

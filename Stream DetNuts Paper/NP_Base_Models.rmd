@@ -9,7 +9,7 @@ This markdown shows the analysis of the base N, P, and stoichiometry curves (how
 #Setup
 ##Pull in tidied data and plot themes with .Rdata file; load libraries
 ```{r dataset for analysis}
-load("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Code/DetNut_Data_for_Analysis.Rdata")
+
 
 #Read-in libraries
 library(tidyverse)
@@ -20,6 +20,10 @@ library(tidymv)
 library(RColorBrewer)
 library(cowplot)
 library(ggsci)
+library(here)
+
+here::i_am("Stream DetNuts Paper/NP_Base_Models.Rmd")
+load(here("Tidy Data and Summarize/DetNut_Data_for_Analysis.Rdata"))
 
 ```
 
@@ -145,7 +149,7 @@ N_deriv.p
 ```{r cowplot N mass and deriv plots}
 
 N_grid <- plot_grid(Nbase_loc.p,N_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig2_N_mass.pdf", N_grid, width = 7.8, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig2_N_mass.pdf", N_grid, width = 7.8, height = 9.1, dpi = 600)
 
 ```
 
@@ -259,14 +263,14 @@ P_deriv.p
 ```{r cowplot P mass and deriv plots}
 
 P_grid<-plot_grid(Pbase_loc.p,P_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig3_P_mass.pdf", P_grid, width = 7.8, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig3_P_mass.pdf", P_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 
 ```{r cowplot N and P plots}
 N_and_P_grid<-plot_grid(Nbase_loc.p,N_deriv.p,Pbase_loc.p,P_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
 
 
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig2_NP_mass.pdf", N_and_P_grid, width = 14, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig2_NP_mass.pdf", N_and_P_grid, width = 14, height = 9.1, dpi = 600)
 
 ```
 
@@ -356,7 +360,7 @@ CN_deriv.p
 ```{r cowplot C:N and deriv plots}
 
 CN_grid<-plot_grid(CNbase_loc.p,CN_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig4_CN.pdf", CN_grid, width = 7.8, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig4_CN.pdf", CN_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 
 #C:P base
@@ -447,13 +451,13 @@ CP_deriv.p
 ```{r cowplot C:P and deriv plots}
 
 CP_grid<-plot_grid(CPbase_loc.p,CP_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig5_CP.pdf", CP_grid, width = 7.8, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig5_CP.pdf", CP_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 
 ```{r cowplot C:N and C:P plots}
 CN_and_CN_grid<-plot_grid(CNbase_loc.p,CN_deriv.p, CPbase_loc.p,CP_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
 
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig3_CNP.pdf", CN_and_CN_grid, width = 14, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig3_CNP.pdf", CN_and_CN_grid, width = 14, height = 9.1, dpi = 600)
 
 ```
 #N:P base
@@ -541,6 +545,6 @@ NP_deriv.p
 ```{r cowplot C:P and deriv plots}
 
 NP_grid<-plot_grid(NPbase_loc.p,NP_deriv.p, nrow = 2, labels = "AUTO", label_size = 20)
-ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig6_NP.pdf", NP_grid, width = 7.8, height = 9.1, dpi = 600)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/DetNut_Fig6_NP.pdf", NP_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 

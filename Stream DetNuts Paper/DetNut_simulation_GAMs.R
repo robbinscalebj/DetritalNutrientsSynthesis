@@ -9,8 +9,10 @@ library(mgcv)
 library(gratia)
 library(tidymv)
 library(cowplot)
+library(here)
 
-load("DetNut_Data_for_Analysis.Rdata")
+here::i_am("Stream DetNuts Paper/DetNut_simulation_GAMs.R")
+load(here("Tidy Data and Summarize/DetNut_Data_for_Analysis.Rdata"))
 
 #Randomize initial N to test how GAMs are sensitive to natural differences that could be driven
 #by the fact that N changes in N-poor litters are highly sensitive on a proportional scale
