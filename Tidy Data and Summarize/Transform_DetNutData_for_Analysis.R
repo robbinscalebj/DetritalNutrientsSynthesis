@@ -72,7 +72,11 @@ det <- det_raw%>%
                                is.na(Water_TN_ug.L) & !is.na(Water_DIN_ug.L) ~ exp(2.11+0.785*log(Water_DIN_ug.L)),
                                TRUE ~ Water_TN_ug.L),
          TP_approx = case_when(is.na(Water_TP_ug.L) & !is.na(Water_SRP_ug.L) ~ exp(2.25+log(Water_SRP_ug.L*0.674)),
-                               TRUE ~ Water_TP_ug.L))%>%
+                               TRUE ~ Water_TP_ug.L),
+         no3_avg = case_when(n_distinct(Water_NO3_ug.L) >1 ~ mean(Water_NO3_ug.L, na.rm = TRUE), 
+                             TRUE ~ Water_NO3_ug.L),
+         srp_avg = case_when(n_distinct(Water_SRP_ug.L) >1 ~ mean(Water_SRP_ug.L, na.rm = TRUE), 
+                             TRUE ~ Water_SRP_ug.L))%>%
 
   #remove text from variable if not coarse fine or open
   

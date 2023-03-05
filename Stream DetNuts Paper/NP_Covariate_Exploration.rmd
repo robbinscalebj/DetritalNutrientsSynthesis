@@ -10,10 +10,10 @@ This markdown starts with base models found in NP_Base_Models.Rmd markdown to ex
 
 Load-in the tidied dataset and packages
 ```{r setup, include=FALSE}
-#load("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Code/DetNut_Data_for_Analysis.Rdata")
 
 #Read-in libraries
 library(tidyverse)
+library(cowplot)
 library(janitor)
 library(gratia)
 library(mgcv)
@@ -32,6 +32,16 @@ ggplot(data=det_loc, aes(x = Temperature_C_avg))+geom_histogram() #Temp is fairl
 ggplot(data=det_loc, aes(x = Velocity_m.s))+geom_histogram() #okay coverage, but low quantity
 ggplot(data=det_loc, aes(x = pH))+geom_histogram()
 
+ggplot(data=det_loc, aes(x = Temperature_C_avg, y = initial_CN))+geom_point()
+ggplot(data=det_loc, aes(x = Temperature_C_avg, y = initial_N))+geom_point()
+ggplot(data=det_loc, aes(x = no3_avg, y = initial_CN))+geom_point()+scale_x_continuous(limits = c(0,2000))
+ggplot(data=det_loc, aes(x = no3_avg, y = initial_N))+geom_point()+scale_x_continuous(limits = c(0,2000))
+ggplot(data=det_loc, aes(x = srp_avg, y = initial_CN))+geom_point()
+ggplot(data=det_loc, aes(x = srp_avg, y = initial_N))+geom_point()
+ggplot(data=det_loc, aes(x = Water_TN_ug.L, y = initial_CN))+geom_point()
+ggplot(data=det_loc, aes(x = Water_TN_ug.L, y = initial_N))+geom_point()
+
+
 ```
 
 
@@ -39,12 +49,14 @@ ggplot(data=det_loc, aes(x = pH))+geom_histogram()
 
 
 ```{r Ni x Temp}
+temp_count <- det_loc|>filter(!is.na(Temperature_C_avg)&!is.na(N_mass)&!is.na(initial_N))|>
+  distinct(series_index)
 
-Ni_base <- gam(data = det_loc, N_mass ~  
+Ni_base_T <- gam(data = det_loc[!is.na(det_loc$Temperature_C_avg),], N_mass ~  
                ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
                      ti(Mass_per_loss, initial_N, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-                   method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+                   method = "ML", family = Gamma(link = "inverse"),select = TRUE) 
 
 Ni_temp_ml <- gam(data = det_loc, N_mass ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
@@ -60,9 +72,8 @@ Ni_temp <- gam(data = det_loc, N_mass ~
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
                    method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
 
- ###saveRDS(Ni_temp,"Model_Objects/Ni_temp.rds")
 
-AIC(Ni_temp_ml,Ni_base)
+AIC(Ni_temp_ml,Ni_base_T)
 summary(Ni_temp_ml)
 appraise(Ni_temp)
 
@@ -87,6 +98,8 @@ Ni_T.pred<-predict_gam(type = "link", Ni_temp, length_out = 5000,  exclude_terms
 
 ```{r Ni x pH}
 
+ph_count <- det_loc|>filter(!is.na(pH)&!is.na(N_mass)&!is.na(initial_N))|>
+  distinct(series_index)
 
 Ni_ph_ml <- gam(data = det_loc, N_mass ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
@@ -99,90 +112,133 @@ Ni_ph_ml <- gam(data = det_loc, N_mass ~
 
 ```
 
-```{r Ni x TN}
+```{r Ni x velocity}
 
+velocity_count <- det_loc|>filter(!is.na(Velocity_m.s)&!is.na(N_mass)&!is.na(initial_N))|>
+  distinct(series_index)
 
-Ni_tn_ml <- gam(data = det_loc, N_mass ~  
+Ni_vel_ml <- gam(data = det_loc, N_mass ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
                   ti(Mass_per_loss, initial_N, m = 2)+
-                  ti(Mass_per_loss,initial_N, TN_approx, m = 2)+
+               ti(Mass_per_loss,initial_N, Velocity_m.s, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
                    method = "ML", family = Gamma(link = "inverse"),select = TRUE) 
 
-Ni_tn <- gam(data = det_loc, N_mass ~  
+###"Model has more coefficiencts than data"
+
+```
+
+```{r Ni x NO3}
+no3_count <- det_loc|>filter(!is.na(no3_avg)&!is.na(N_mass)&!is.na(initial_N))|>
+  distinct(series_index)
+
+Ni_base_no3 <- gam(data = det_loc[!is.na(det_loc$no3_avg),], N_mass ~  
+               ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
+                     ti(Mass_per_loss, initial_N, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "inverse"),select = TRUE) 
+
+Ni_no3_ml <- gam(data = det_loc, N_mass ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
                   ti(Mass_per_loss, initial_N, m = 2)+
-                  ti(Mass_per_loss,initial_N, TN_approx, m = 2)+
+                  ti(Mass_per_loss,initial_N, no3_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "inverse"),select = TRUE) 
+
+Ni_no3 <- gam(data = det_loc, N_mass ~  
+                  ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
+                  ti(Mass_per_loss, initial_N, m = 2)+
+                  ti(Mass_per_loss,initial_N, no3_avg, m = 1)+
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
                    method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
 
 
 
-summary(Ni_tn_ml)
-appraise(Ni_tn)
-###saveRDS(Ni_tn,"Model_Objects/Ni_tn.rds")
+summary(Ni_no3_ml)
+appraise(Ni_no3)
+AIC(Ni_base_no3, Ni_no3_ml)
 
-Ni_TN.pred<-predict_gam(type = "link", Ni_tn, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3),TN_approx = c(300,600,1000,1500)))%>%
+Ni_NO3.pred<-predict_gam(type = "link", Ni_no3, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3),TN_approx = c(300,600,1000,1500)))%>%
    mutate(TN_approx = as_factor(TN_approx), initial_N = as_factor(initial_N))
   
 
 
- Ni_TN.p<- ggplot()+
-    geom_smooth(data = Ni_TN.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = TN_approx, linetype = TN_approx))+
+ Ni_no3.p<- ggplot()+
+    geom_smooth(data = Ni_NO3.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = TN_approx, linetype = TN_approx))+
    facet_grid(initial_N~., scales = "free")+
-   geom_ribbon(data = Ni_TN.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
+   geom_ribbon(data = Ni_NO3.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
     geom_abline(slope = -0.01, intercept = 1)+
     NULL
- Ni_TN.p
+ Ni_no3.p
 ```
 
 
 
-```{r Ni x TP}
+```{r Ni x PO4}
 
-Ni_tp_ml <- gam(data = det_loc, N_mass ~  
+po4_count <- det_loc|>filter(!is.na(srp_avg)&!is.na(N_mass)&!is.na(initial_N))|>
+  distinct(series_index)
+
+Ni_base_po4 <- gam(data = det_loc[!is.na(det_loc$srp_avg),], N_mass ~  
+               ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
+                     ti(Mass_per_loss, initial_N, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "inverse"),select = TRUE) 
+
+Ni_po4_ml <- gam(data = det_loc, N_mass ~  
                   ti(Mass_per_loss) + ti(initial_N)+
                   ti(Mass_per_loss, initial_N, m = 2)+
-                  ti(Mass_per_loss,initial_N, TP_approx, m = 1)+ 
+                  ti(Mass_per_loss,initial_N, srp_avg, m = 1)+ 
                s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
                    method = "ML", family = gaussian(link = "inverse"),select = TRUE)
 
-Ni_tp <- gam(data = det_loc, N_mass ~  
+Ni_po4 <- gam(data = det_loc, N_mass ~  
                   ti(Mass_per_loss) + ti(initial_N)+
                   ti(Mass_per_loss, initial_N, m = 2)+
-                  ti(Mass_per_loss,initial_N, TP_approx, m = 1)+ 
+                  ti(Mass_per_loss,initial_N, srp_avg, m = 1)+ 
                s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
                    method = "REML", family = gaussian(link = "inverse"),select = TRUE)
 
 
 
-summary(Ni_tp_ml)
-appraise(Ni_tp)
-
+summary(Ni_po4_ml)
+appraise(Ni_po4)
+AIC(Ni_base_po4,Ni_po4_ml)
 ###saveRDS(Ni_tp,"Model_Objects/Ni_tp.rds")
 
-Ni_TP.pred<-predict_gam(type = "link", Ni_tp, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3),TP_approx = c(50,100,300,500)))%>%
-   mutate(TP_approx = as_factor(TP_approx), initial_N = as_factor(initial_N))
+Ni_po4.pred<-predict_gam(type = "link", Ni_po4, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(2,1.5,1.0,0.6),srp_avg = c(25,50,75,100)))%>%
+   mutate(srp_avg = as_factor(srp_avg), initial_N = as_factor(initial_N),
+          srp_avg = fct_recode(srp_avg, "0.05 mg/L" = "50", "0.1 mg/L" = "100","0.3 mg/L" = "300"))|>
+  rename(`PO4-P` = srp_avg)
   
 
 
- Ni_TP.p<- ggplot()+
-    geom_smooth(data = Ni_TP.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N, linetype = TP_approx))+
-   facet_grid(initial_N~TP_approx, scales = "free")+
-   geom_ribbon(data = Ni_TP.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
+ Ni_po4.p<- ggplot()+
+    geom_smooth(data = Ni_po4.pred, se = FALSE, aes(x = Mass_per_loss, y = 1/fit, color = initial_N, linetype = `PO4-P`))+
+   facet_grid(initial_N~`PO4-P`, scales = "free")+
+   geom_ribbon(data = Ni_po4.pred, aes(x = Mass_per_loss, ymin = 1/(fit - 2*se.fit), ymax = 1/(fit + 2*se.fit)), alpha = 0.3)+
     geom_abline(slope = -0.01, intercept = 1)+
+   ggtitle("PO4-P x N mass")+
+   ylab("N mass")+
+   xlab("Mass (% loss)")+
+   guides(color = "none", linetype = "none")+
     NULL
- Ni_TP.p
+Ni_po4.p
  
+
+ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/NixPO4.pdf", Ni_po4.p, width = 7.8, height = 6, dpi = 600)
 ```
 
 #CN exploratory models
 
 ```{r CN X Temp}
-CN_base1 <- gam(data = det_loc_cnp, CN_ratio ~
+cn_t_count <- det_loc_cnp|>filter(!is.na(Temperature_C_avg)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
+
+CN_base1 <- gam(data = det_loc_cnp[!is.na(det_loc_cnp$Temperature_C_avg),], CN_ratio ~
                         te(Mass_per_loss, initial_CN, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"), select = TRUE)
+             method = "ML", family = Gamma(link = "log"), select = TRUE)
 
 
 CN_temp_ml <- gam(data = det_loc_cnp, CN_ratio ~  
@@ -211,7 +267,10 @@ CN_T.pred<-predict_gam(type = "link", CN_temp, length_out = 5000,  exclude_terms
    mutate(Temperature_C_avg = as_factor(Temperature_C_avg), initial_CN = as_factor(initial_CN))
   
 
- CN_T.p<- ggplot(data = CN_T.pred%>%mutate(Temperature_C_avg = fct_recode(Temperature_C_avg, "7.5 C" = "7.5", "10 C" = "10","15 C" = "15", "20 C" = "20")))+
+ CN_T.p<- ggplot(data = CN_T.pred%>%
+                   mutate(fit = ifelse(Temperature_C_avg == 20 & as.numeric(as.character(initial_CN)) >=100, NA_real_, fit),
+                          se.fit = ifelse(Temperature_C_avg == 20 & as.numeric(as.character(initial_CN)) >=100, NA_real_, se.fit),
+                          Temperature_C_avg = fct_recode(Temperature_C_avg, "7.5 C" = "7.5", "10 C" = "10","15 C" = "15", "20 C" = "20")))+
     geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = Temperature_C_avg, linetype = Temperature_C_avg))+
    facet_grid(initial_CN~Temperature_C_avg, scales = "free")+
    geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
@@ -248,6 +307,9 @@ CNxTemp_deriv_samples <- CNxTemp_gam_fitted%>%arrange(initial_CN, Temperature_C_
 
 CNxTemp_deriv.p<-ggplot(data = CNxTemp_deriv_samples%>%
                     mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)),
+                           md_posterior = ifelse(Temperature_C_avg == 20 & as.numeric(as.character(initial_CN)) >=100, NA_real_, md_posterior),
+                           upper_posterior = ifelse(Temperature_C_avg == 20 & as.numeric(as.character(initial_CN)) >=100, NA_real_, upper_posterior),
+                           lower_posterior = ifelse(Temperature_C_avg == 20 & as.numeric(as.character(initial_CN)) >=100, NA_real_, lower_posterior),
                            Temperature_C_avg = fct_recode(Temperature_C_avg, "7.5 C" = "7.5", "10 C" = "10","15 C" = "15", "20 C" = "20"))%>%
                     filter(Mass_per_loss>0))+
          geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)), size = 1)+
@@ -261,7 +323,7 @@ CNxTemp_deriv.p<-ggplot(data = CNxTemp_deriv_samples%>%
   theme_bw()+deriv_plot_theme+
   NULL
 CNxTemp_deriv.p
-CNxTemp_deriv.p2
+
 ```
 
 
@@ -273,12 +335,192 @@ CN_temp_grid <- plot_grid(CN_T.p,CNxTemp_deriv.p, nrow = 2, labels = "AUTO", lab
 ```
 
 
+```{r CN X NO3}
+cn_no3_count <- det_loc_cnp|>filter(!is.na(no3_avg)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
+
+CN_base_no3 <- gam(data = det_loc_cnp[!is.na(det_loc_cnp$no3_avg),], CN_ratio ~
+                        te(Mass_per_loss, initial_CN, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
+             method = "ML", family = Gamma(link = "log"), select = TRUE)
+
+
+CN_no3_ml <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, no3_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
+
+
+CN_no3 <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, no3_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+AIC(CN_base_no3,CN_no3_ml)
+summary(CN_no3_ml)
+appraise(CN_no3)
+
+CN_NO3.pred<-predict_gam(type = "link", CN_no3, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),no3_avg = c(100,400,1750)))%>%
+   mutate(fit = ifelse(initial_CN >70 & no3_avg == 1750, NA_real_, fit),
+          no3_avg = as_factor(no3_avg), initial_CN = as_factor(initial_CN),
+          no3_avg = fct_recode(no3_avg, "0.1 mg/L" = "100", "0.4 mg/L" = "400","1.75 mg/L" = "1750"))
+  
+
+ CN_NO3.p<- ggplot(data = CN_NO3.pred)+
+    geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = no3_avg, linetype = no3_avg))+
+   facet_grid(initial_CN~no3_avg, scales = "free")+
+   geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
+   ylab("C:N (molar)")+
+   xlab("Mass loss (%)")+ggtitle("NO3 x C:N")+theme(legend.position ="none")+
+  NULL
+ CN_NO3.p
+
+
+```
+
+```{r CN No3 covar curve derivatives}
+
+CNxNO3_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), no3_avg = c(100,400,1750),initial_CN = c(25,40,50,70,100,140), series_index = 4)
+n_draws <- 10000
+CNxno3_mass_grid_exp <- map_dfr(seq_len(n_draws), ~CNxNO3_mass_grid)
+
+
+CNxno3_gam_fitted <- fitted_samples(CN_no3, exclude = c("s(series_index)", "s(series_index, Mass_per_loss)"), n = n_draws, newdata = CNxNO3_mass_grid, seed = 1, scale = "response")%>%
+  bind_cols(CNxno3_mass_grid_exp)%>%mutate(initial_CN = as_factor(initial_CN), no3_avg = as_factor(no3_avg), draw = as_factor(draw), fitted = log(fitted))
+#log transformed fitted values because *ratios*
+
+
+CNxno3_deriv_samples <- CNxno3_gam_fitted%>%arrange(initial_CN, no3_avg)%>%group_by(draw, initial_CN,no3_avg)%>%mutate(fit_dif = (fitted-lag(fitted))/0.2)%>%mutate(Mass_per_loss = as_factor(Mass_per_loss))%>%ungroup()%>%
+  group_by(initial_CN,no3_avg, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
+
+#export object because it took about 15 minutes to create with 10000 draws...
+#saveRDS(CNxTemp_deriv_samples,"Model_Objects/CN_temp_derivs.rds")
+
+
+CNxno3_deriv.p<-ggplot(data = CNxno3_deriv_samples%>%
+                    mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)),
+                           md_posterior = ifelse(no3_avg == 1750 & as.numeric(as.character(initial_CN)) >70, NA_real_, md_posterior),
+                           upper_posterior = ifelse(no3_avg == 1750 & as.numeric(as.character(initial_CN)) >70, NA_real_, upper_posterior),
+                           lower_posterior = ifelse(no3_avg == 1750 & as.numeric(as.character(initial_CN)) >70, NA_real_, lower_posterior),
+                           no3_avg = fct_recode(no3_avg, "0.1 mg/L" = "100", "0.4 mg/L" = "400","1.75 mg/L" = "1750"))%>%
+                    filter(Mass_per_loss>0))+
+         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)), size = 1)+
+  geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
+  geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
+         facet_grid(initial_CN~no3_avg, scales = "free")+
+  scale_y_continuous(trans="log")+
+  geom_hline(yintercept = 1)+
+  ylab("Rate of Change (Log C:N/Mass loss)")+
+  xlab("Mass Loss (%)")+
+  theme_bw()+deriv_plot_theme+
+  NULL
+CNxno3_deriv.p
+
+
+CN_no3_grid <- plot_grid(CN_NO3.p,CNxno3_deriv.p, nrow = 2, labels = "AUTO", label_size = 15)
+ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/CNxno3.pdf", CN_no3_grid, width = 7.8, height = 9.1, dpi = 600)
+```
+
+```{r CN X PO4}
+cn_srp_count <- det_loc_cnp|>filter(!is.na(srp_avg)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
+
+CN_base_po4 <- gam(data = det_loc_cnp[!is.na(det_loc_cnp$srp_avg),], CN_ratio ~
+                        te(Mass_per_loss, initial_CN, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
+             method = "ML", family = Gamma(link = "log"), select = TRUE)
+
+
+
+CN_srp_ml <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, srp_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
+
+
+CN_srp <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, srp_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+AIC(CN_base_po4,CN_srp_ml)
+summary(CN_srp_ml)
+appraise(CN_srp)
+
+###saveRDS(CN_no3,"Model_Objects/CN_temp.rds")
+###CN_temp <- readRDS("Model_Objects/CN_temp.rds")
+
+CN_srp.pred<-predict_gam(type = "link", CN_srp, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),srp_avg = c(25,50,100)))%>%
+   mutate(srp_avg = as_factor(srp_avg), initial_CN = as_factor(initial_CN))
+  
+
+ CN_srp.p<- ggplot(data = CN_srp.pred)+
+    geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = srp_avg, linetype = srp_avg))+
+   facet_grid(initial_CN~srp_avg, scales = "free")+
+   geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
+   ylab("C:N (molar)")+
+   xlab("Mass loss (%)")+ggtitle("SRP x C:N")+theme(legend.position ="none")+
+  NULL
+ CN_srp.p
+
+```
+
+```{r CN po4 covar curve derivatives}
+
+CNxpo4_mass_grid <- expand_grid(Mass_per_loss = seq(0,80, by = 0.2), srp_avg = c(25,50,100),initial_CN = c(25,40,50,70,100,140), series_index = 4)
+n_draws <- 10000
+CNxpo4_mass_grid_exp <- map_dfr(seq_len(n_draws), ~CNxpo4_mass_grid)
+
+
+CNxpo4_gam_fitted <- fitted_samples(CN_srp, exclude = c("s(series_index)", "s(series_index, Mass_per_loss)"), n = n_draws, newdata = CNxpo4_mass_grid, seed = 1, scale = "response")%>%
+  bind_cols(CNxpo4_mass_grid_exp)%>%mutate(initial_CN = as_factor(initial_CN), srp_avg = as_factor(srp_avg), draw = as_factor(draw), fitted = log(fitted))
+#log transformed fitted values because *ratios*
+
+
+CNxpo4_deriv_samples <- CNxpo4_gam_fitted%>%arrange(initial_CN, srp_avg)%>%group_by(draw, initial_CN,srp_avg)%>%mutate(fit_dif = (fitted-lag(fitted))/0.2)%>%mutate(Mass_per_loss = as_factor(Mass_per_loss))%>%ungroup()%>%
+  group_by(initial_CN,srp_avg, Mass_per_loss)%>%summarize(md_posterior = median(fit_dif), upper_posterior = quantile(fit_dif,0.975,na.rm = TRUE), lower_posterior = quantile(fit_dif,0.025,na.rm = TRUE))
+
+
+
+CNxpo4_deriv.p<-ggplot(data = CNxpo4_deriv_samples%>%
+                    mutate(Mass_per_loss = as.numeric(as.character(Mass_per_loss)),
+                           #md_posterior = ifelse(srp_avg <= 100 , NA_real_, md_posterior),
+                           #upper_posterior = ifelse(srp_avg <= 100 , NA_real_, upper_posterior),
+                           #lower_posterior = ifelse(srp_avg <= 100, NA_real_, lower_posterior),
+                           srp_avg = fct_recode(srp_avg, "0.025 mg/L" = "25", "0.05 mg/L" = "50","0.1 mg/L" = "100"))%>%
+                    filter(Mass_per_loss>0))+
+         geom_line(aes(x= Mass_per_loss, y = exp(md_posterior)), size = 1)+
+  geom_line(aes(x= Mass_per_loss, y = exp(lower_posterior)), linetype = 2)+
+  geom_line(aes(x= Mass_per_loss, y = exp(upper_posterior)), linetype = 2)+
+         facet_grid(initial_CN~srp_avg, scales = "free")+
+  scale_y_continuous(trans="log")+
+  geom_hline(yintercept = 1)+
+  ylab("Rate of Change (Log C:N/Mass loss)")+
+  xlab("Mass Loss (%)")+
+  theme_bw()+deriv_plot_theme+
+  NULL
+CNxpo4_deriv.p
+
+
+CN_po4_grid <- plot_grid(CN_srp.p,CNxpo4_deriv.p, nrow = 2, labels = "AUTO", label_size = 15)
+ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Exploratory Figures/CNxpo4.pdf", CN_po4_grid, width = 7.8, height = 9.1, dpi = 600)
+```
+
 #P mass exploratory models 
 
 None of these will fit - tried all covariates with P and C:P. Just not enough data for three-way tensor interactions and REs 
 
 ```{r Pi x Temp}
-
+p_srp_count <- det_loc|>filter(!is.na(srp_avg)&!is.na(P_mass)&!is.na(initial_P))|>
+  distinct(series_index)
 #can't fit
 Pi_temp_ml <- gam(data = det_loc, P_mass ~  
                   ti(Mass_per_loss, m = 2) + ti(initial_P, m = 2)+
@@ -291,21 +533,27 @@ Pi_temp_ml <- gam(data = det_loc, P_mass ~
 
 
 ```
-#CP exploratory models
-
+#CP and NP exploratory models
+None of the covariates have enough data to fit - tried them all
 ```{r}
+np_srp_count <- det_loc_cnp|>filter(!is.na(srp_avg)&!is.na(NP_ratio)&!is.na(initial_NP))|>
+  distinct(series_index)
+
 CP_base1 <- gam(data = det_loc_cnp, CP_ratio ~
                         te(Mass_per_loss, initial_CP, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
              method = "REML", family = gaussian(link = "log"), select = TRUE)
 
 
-CP_temp_ml <- gam(data = det_loc_cnp, CP_ratio ~  
-                  ti(Mass_per_loss, m = 2) + ti(initial_CP, m = 2)+
+NP_po4_ml <- gam(data = det_loc_cnp, NP_ratio ~  
+                  ti(Mass_per_loss, m = 2) + ti(initial_NP, m = 2)+
                   ti(Mass_per_loss, initial_CP, m = 2)+
-               ti(Mass_per_loss,initial_CP, TP_approx, m = 1)+
+               ti(Mass_per_loss,initial_NP, srp_avg, m = 1)+
                         s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs ="re"), 
-                   method = "ML", family = gaussian(link = "identity"),select = TRUE) 
+                   method = "ML", family = gaussian(link = "identity"),select = TRUE)
+
+
+
 
 
 ```
