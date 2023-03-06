@@ -16,6 +16,7 @@ library(tidyverse)
 library(mgcv)
 library(gratia)
 library(cowplot)
+library(doSNOW)
 library(here)
 
 here::i_am("Stream DetNuts Paper/GAM_Series_Sensitivity.Rmd")
@@ -26,57 +27,58 @@ load(here("Tidy Data and Summarize/DetNut_Data_for_Analysis.Rdata"))
 
 #N mass base model
 ```{r}
-#1. create list of time series to delete
 
 series_remove <- det_loc|>filter(!is.na(N_mass_norm)&!is.na(initial_N))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
+series_remove <- series_remove[1:10]
 
-#2. set up list to populate
-gam_list.names <- c("preds", "summaries")
-gam_list <- vector("list", length(gam_list.names))
-names(gam_list) <- gam_list.names
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
 
-#3. for loop
-for (i in 1:length(series_remove)) {
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
   remove.i <- series_remove[i]
-#retain identity for each series  
   id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
 #fit gam for plotting predictions
   data.i <- det_loc|>filter(series_index != remove.i)
-  gam.i_pval <-  gam(data = data.i, N_mass_norm ~  
-               ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
-                     ti(Mass_per_loss, initial_N, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "ML", family = Gamma(link = "inverse"),select = TRUE)  
- #fit gam for inference on terms 
   gam.i_preds <-  gam(data = data.i, N_mass_norm ~  
                      te(Mass_per_loss, initial_N, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re"), 
                    method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
   
-  #populate initial list with results
-gam_list$summaries[[i]] <- tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 
-gam_list$preds[[i]] <-predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3)))%>%
+predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3)))%>%
   mutate(initial_N = as_factor(initial_N))|>
   select(-series_index)|>
   mutate(index = as_factor(i), series_index = as_factor(remove.i))
 
-print(paste("Completed iteration", i), sep = " ")
+#print(paste("Completed iteration", i), sep = " ")
 }
-#4. Combine model information
-## Combine predictions
-Ni_pred_combined <- map_dfr(gam_list$preds, bind_rows)
-#saveRDS(Ni_pred_combined,"Model_Objects/Ni_sens_preds.rds")
-#Ni_pred_combined<-readRDS("Model_Objects/Ni_sens_preds.rds")
-## Combine p-vals
-Ni_p_vals <- map_dfr(gam_list$summaries, bind_rows)
-#saveRDS(Ni_p_vals,"Model_Objects/Ni_sens_pvals.rds")
-#Ni_p_vals<-readRDS("Model_Objects/Ni_sens_pvals.rds")
 
-#Plot of predictions generated for each model with data held out
+#loop for predictions
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc|>filter(series_index != remove.i)
+   gam.i_pval <-  gam(data = data.i, N_mass_norm ~  
+               ti(Mass_per_loss, m = 2) + ti(initial_N, m = 2)+
+                     ti(Mass_per_loss, initial_N, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "ML", family = Gamma(link = "inverse"),select = TRUE)  
+
+tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
+}
+
 Ni_sens.p<- ggplot()+
-  geom_line(data = Ni_pred_combined, aes(x = Mass_per_loss, group = index, y = 1/fit, color = initial_N), alpha = 0.2)+
+  geom_line(data = gam_preds, aes(x = Mass_per_loss, group = index, y = 1/fit, color = initial_N), alpha = 0.2)+
     geom_abline(slope = -0.01, intercept = 1)+
   ylab("Normalized N Mass")+
   xlab("Mass Loss (%)")+
@@ -88,11 +90,11 @@ Ni_sens.p<- ggplot()+
  Ni_sens.p
  
 
-# pvalue density plot - p-value from base penalized model shown in red
 
- Ni_pvals.p<-ggplot(data = Ni_p_vals, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.106, color = "red") #base mod p-value
+ Ni_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.106, color = "red") #base mod p-value
 
  Nsens_grid<-plot_grid(Ni_sens.p,Ni_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
+ 
 #ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/Ni_sens.pdf", Nsens_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 
@@ -102,53 +104,55 @@ Ni_sens.p<- ggplot()+
 series_remove <- det_loc|>filter(!is.na(P_mass_norm)&!is.na(initial_P))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
 
-#2. set up list to populate
-gam_list.names <- c("preds", "summaries")
-gam_list <- vector("list", length(gam_list.names))
-names(gam_list) <- gam_list.names
 
-#3. for loop
-for (i in 1:length(series_remove)) {
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
   remove.i <- series_remove[i]
-#retain identity for each series  
   id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
 #fit gam for plotting predictions
   data.i <- det_loc|>filter(series_index != remove.i)
-  gam.i_pval <-  gam(data = data.i, P_mass_norm ~  
-               ti(Mass_per_loss, m = 2) + ti(initial_P, m = 2)+
-                     ti(Mass_per_loss, initial_P, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re"), 
-                   method = "ML", family = Gamma(link = "inverse"),select = TRUE)  
-  #fit gam for inference on terms 
   gam.i_preds <-  gam(data = data.i, P_mass_norm ~  
                      te(Mass_per_loss, initial_P, m = 2)+
                         s(series_index, Mass_per_loss, bs = "re"), 
                    method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
   
-gam_list$summaries[[i]] <- tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 
-gam_list$preds[[i]] <-predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_P = c(0.01,0.02,0.05,0.1,0.15,0.23)))%>%
-  mutate(Initial_P = as_factor(initial_P))|>
+predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_P = c(3,2,1.5,1.0,0.6,0.3)))%>%
+  mutate(initial_P = as_factor(initial_P))|>
   select(-series_index)|>
-  mutate(model_iteration = i, series_index = as_factor(remove.i))
+  mutate(index = as_factor(i), series_index = as_factor(remove.i))
 
-print(paste("Completed iteration", i), sep = " ")
+#print(paste("Completed iteration", i), sep = " ")
 }
-#4. Combine model information
-## Combine predictions
-Pi_pred_combined <- map_dfr(gam_list$preds, bind_rows)
-#saveRDS(Pi_pred_combined,"Model_Objects/Pi_sens_preds.rds")
-#Pi_pred_combined<-readRDS("Model_Objects/Pi_sens_preds.rds")
 
-## Combine p-vals
-Pi_p_vals <- map_dfr(gam_list$summaries, bind_rows)
-#saveRDS(Pi_p_vals,"Model_Objects/Pi_sens_pvals.rds")
-#Pi_p_vals<-readRDS("Model_Objects/Pi_sens_pvals.rds")
+#loop for predictions
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc|>filter(series_index != remove.i)
+   gam.i_pval <-  gam(data = data.i, N_mass_norm ~  
+               ti(Mass_per_loss, m = 2) + ti(initial_P, m = 2)+
+                     ti(Mass_per_loss, initial_P, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "ML", family = Gamma(link = "inverse"),select = TRUE)  
 
-##Plot of predictions generated for each model with data held out
+tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
+}
+
 
 Pi_sens.p<- ggplot()+
-  geom_line(data = Pi_pred_combined, aes(x = Mass_per_loss, group = model_iteration, y = 1/fit, color = Initial_P), alpha = 0.2)+
+  geom_line(data = gam_preds, aes(x = Mass_per_loss, group = model_iteration, y = 1/fit, color = Initial_P), alpha = 0.2)+
     geom_abline(slope = -0.01, intercept = 1)+
   ylab("Normalized P Mass")+
   xlab("Mass Loss (%)")+
@@ -160,9 +164,8 @@ Pi_sens.p<- ggplot()+
  Pi_sens.p
  
 
-#pvalue density plot - p-value from base penalized model shown in red
 
- Pi_pvals.p<-ggplot(data = Pi_p_vals, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.0012, color = "red") #base mod p-value
+ Pi_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.0012, color = "red") #base mod p-value
 
  
  Psens_grid<-plot_grid(Pi_sens.p,Pi_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
@@ -176,53 +179,53 @@ Pi_sens.p<- ggplot()+
 series_remove <- det_loc_cnp|>filter(!is.na(CN_ratio)&!is.na(initial_CN))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
 
-#2. set up list to populate
-gam_list.names <- c("preds", "summaries")
-gam_list <- vector("list", length(gam_list.names))
-names(gam_list) <- gam_list.names
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
 
-#3. for loop
-for (i in 1:length(series_remove)) {
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
   remove.i <- series_remove[i]
-  #retain identity for each series  
   id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
 #fit gam for plotting predictions
   data.i <- det_loc_cnp|>filter(series_index != remove.i)
-  gam.i_pvals <-  gam(data = data.i, CN_ratio ~  
+  gam.i_preds <-  gam(data = data.i, CN_ratio ~  
+                     te(Mass_per_loss, initial_CN, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+  
+
+predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_CN = c(3,2,1.5,1.0,0.6,0.3)))%>%
+  mutate(initial_CN = as_factor(initial_CN))|>
+  select(-series_index)|>
+  mutate(index = as_factor(i), series_index = as_factor(remove.i))
+
+#print(paste("Completed iteration", i), sep = " ")
+}
+
+#loop for predictions
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+   gam.i_pval <-  gam(data = data.i, CN_ratio ~  
                ti(Mass_per_loss, m = 2) + ti(initial_CN, m = 2)+
                      ti(Mass_per_loss, initial_CN, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
+                        s(series_index, Mass_per_loss, bs = "re"), 
                    method = "ML", family = Gamma(link = "log"),select = TRUE)  
- #fit gam for inference on terms   
-  gam.i_preds <- gam(data = data.i, CN_ratio ~ 
-                        te(Mass_per_loss, initial_CN, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"), select = TRUE) 
-  
-gam_list$summaries[[i]] <- tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 
-gam_list$preds[[i]] <- predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25)))%>%
-  mutate(initial_CN = fct_relevel(as_factor(initial_CN), c("140","100","70","50","40","25")))|>
-  select(-series_index)|>
-  mutate(model_iteration = i, series_index = as_factor(remove.i))
-
-print(paste("Completed iteration", i), sep = " ")
+tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 }
-#4. Combine model information
-## Combine predictions
-CNi_pred_combined <- map_dfr(gam_list$preds, bind_rows)
-#saveRDS(CNi_pred_combined,"Model_Objects/CNi_sens_preds.rds")
-#CNi_pred_combined<-readRDS("Model_Objects/CNi_sens_preds.rds")
-
-## Combine p-vals
-CNi_p_vals <- map_dfr(gam_list$summaries, bind_rows)
-#saveRDS(CNi_p_vals,"Model_Objects/CNi_sens_pvals.rds")
-#CNi_p_vals<-readRDS("Model_Objects/CNi_sens_pvals.rds")
-
-##Plot of predictions generated for each model with data held out
 
 CNi_sens.p<- ggplot()+
-  geom_line(data = CNi_pred_combined, aes(x = Mass_per_loss, group = model_iteration, y = exp(fit), color = initial_CN), alpha = 0.2)+
+  geom_line(data = gam_preds, aes(x = Mass_per_loss, group = model_iteration, y = exp(fit), color = initial_CN), alpha = 0.2)+
   ylab("C:N Ratio")+
   xlab("Mass Loss (%)")+
   facet_wrap(.~initial_CN, scales = "free")+
@@ -235,7 +238,7 @@ CNi_sens.p<- ggplot()+
 
 #pvalue density plot - p-value from base penalized model shown in red
 
- CNi_pvals.p<-ggplot(data = CNi_p_vals, aes(x = p.value))+geom_density()+annotate("text", y = 0.5, x = 0,label = "All P-values evaluated to 0")#+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
+ CNi_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+annotate("text", y = 0.5, x = 0,label = "All P-values evaluated to 0")#+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
  
  CNsens_grid<-plot_grid(CNi_sens.p,CNi_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
 #ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CNi_sens.pdf", CNsens_grid, width = 7.8, height = 9.1, dpi = 600)
@@ -247,52 +250,53 @@ CNi_sens.p<- ggplot()+
 series_remove <- det_loc_cnp|>filter(!is.na(CP_ratio)&!is.na(initial_CP))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
 
-#2. set up list to populate
-gam_list.names <- c("preds", "summaries")
-gam_list <- vector("list", length(gam_list.names))
-names(gam_list) <- gam_list.names
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
 
-#3. for loop
-for (i in 1:length(series_remove)) {
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
   remove.i <- series_remove[i]
-    #retain identity for each series  
   id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
 #fit gam for plotting predictions
   data.i <- det_loc_cnp|>filter(series_index != remove.i)
-  gam.i_pvals <- gam(data = data.i, CP_ratio ~  
+  gam.i_preds <-  gam(data = data.i, CP_ratio ~  
+                     te(Mass_per_loss, initial_CP, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "inverse"),select = TRUE) 
+  
+
+predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_CP = c(3,2,1.5,1.0,0.6,0.3)))%>%
+  mutate(initial_CP = as_factor(initial_CP))|>
+  select(-series_index)|>
+  mutate(index = as_factor(i), series_index = as_factor(remove.i))
+
+#print(paste("Completed iteration", i), sep = " ")
+}
+
+#loop for predictions
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+   gam.i_pval <-  gam(data = data.i, CP_ratio ~  
                ti(Mass_per_loss, m = 2) + ti(initial_CP, m = 2)+
                      ti(Mass_per_loss, initial_CP, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
-  
-   gam.i_preds <- gam(data = data.i, CP_ratio ~ 
-                        te(Mass_per_loss, initial_CP, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"), select = TRUE) 
-  
-gam_list$summaries[[i]] <- tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE)  
 
-gam_list$preds[[i]] <- predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_CP = c(5000,3000,2000,1600,1200,800)))%>%
-  mutate(initial_CP = fct_relevel(as_factor(initial_CP), c("5000","3000","2000","1600","1200","800")))|>
-  select(-series_index)|>
-  mutate(model_iteration = i, series_index = as_factor(remove.i))
-
-print(paste("Completed iteration", i), sep = " ")
+tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 }
-#4. Combine model information
-CPi_pred_combined <- map_dfr(gam_list$preds, bind_rows)
-#saveRDS(CPi_pred_combined,"Model_Objects/CPi_sens_preds.rds")
-#CPi_pred_combined<-readRDS("Model_Objects/CPi_sens_preds.rds")
-
-## Combine p-vals
-CPi_p_vals <- map_dfr(gam_list$summaries, bind_rows)
-#saveRDS(CPi_p_vals,"Model_Objects/CPi_sens_pvals.rds")
-#CPi_p_vals<-readRDS("Model_Objects/CPi_sens_pvals.rds")
-
-##Plot of predictions generated for each model with data held out
 
 CPi_sens.p<- ggplot()+
-  geom_line(data = CPi_pred_combined, aes(x = Mass_per_loss, group = model_iteration, y = exp(fit), color = initial_CP), alpha = 0.2)+
+  geom_line(data = gam_preds, aes(x = Mass_per_loss, group = model_iteration, y = exp(fit), color = initial_CP), alpha = 0.2)+
   ylab("C:P Ratio")+
   xlab("Mass Loss (%)")+
   facet_wrap(.~initial_CP, scales = "free")+
@@ -305,7 +309,7 @@ CPi_sens.p<- ggplot()+
 
 #pvalue density plot - p-value from base penalized model shown in red
 
- CPi_pvals.p<-ggplot(data = CPi_p_vals, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.0003, color = "red") #base mod p-value
+ CPi_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.0003, color = "red") #base mod p-value
  
  CPsens_grid<-plot_grid(CPi_sens.p,CPi_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
 #ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CPi_sens.pdf", CPsens_grid, width = 7.8, height = 9.1, dpi = 600)
@@ -317,52 +321,53 @@ CPi_sens.p<- ggplot()+
 series_remove <- det_loc_cnp|>filter(!is.na(NP_ratio)&!is.na(initial_NP))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
 
-#2. set up list to populate
-gam_list.names <- c("preds", "summaries")
-gam_list <- vector("list", length(gam_list.names))
-names(gam_list) <- gam_list.names
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
 
-#3. for loop
-for (i in 1:length(series_remove)) {
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
   remove.i <- series_remove[i]
-#retain identity for each series  
   id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
 #fit gam for plotting predictions
   data.i <- det_loc_cnp|>filter(series_index != remove.i)
-  gam.i_pvals <- gam(data = data.i, NP_ratio ~  
-               ti(Mass_per_loss, m = 2) + ti(initial_NP, m = 2)+
-                     ti(Mass_per_loss, initial_NP, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
-                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
+  gam.i_preds <-  gam(data = data.i, NP_ratio ~  
+                     te(Mass_per_loss, initial_NP, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
   
-   gam.i_preds <- gam(data = data.i, NP_ratio ~ 
-                        te(Mass_per_loss, initial_NP, m = 2)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-             method = "REML", family = Gamma(link = "log"), select = TRUE) 
-  
-gam_list$summaries[[i]] <- tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 
-gam_list$preds[[i]] <- predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, Remain_Mass_Category = NULL, initial_NP = c(100,70,55,40,25,10)))%>%
-  mutate(initial_NP = fct_relevel(as_factor(initial_NP), c("100","70","55","40","25","10")))|>
+predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL, initial_NP = c(3,2,1.5,1.0,0.6,0.3)))%>%
+  mutate(initial_NP = as_factor(initial_NP))|>
   select(-series_index)|>
-  mutate(model_iteration = i, series_index = as_factor(remove.i))
+  mutate(index = as_factor(i), series_index = as_factor(remove.i))
 
-print(paste("Completed iteration", i), sep = " ")
+#print(paste("Completed iteration", i), sep = " ")
 }
-#4. Combine model information
-NPi_pred_combined <- map_dfr(gam_list$preds, bind_rows)
-#saveRDS(NPi_pred_combined,"Model_Objects/NPi_sens_preds.rds")
-#NPi_pred_combined<-readRDS("Model_Objects/NPi_sens_preds.rds")
 
-## Combine p-vals
-NPi_p_vals <- map_dfr(gam_list$summaries, bind_rows)
-#saveRDS(NPi_p_vals,"Model_Objects/NPi_sens_pvals.rds")
-#NPi_p_vals<-readRDS("Model_Objects/NPi_sens_pvals.rds")
+#loop for predictions
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+   gam.i_pval <-  gam(data = data.i, NP_ratio ~  
+               ti(Mass_per_loss, m = 2) + ti(initial_NP, m = 2)+
+                     ti(Mass_per_loss, initial_NP, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE)  
 
-##Plot of predictions generated for each model with data held out
+tidy(gam.i_pval)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
+}
 
 NPi_sens.p<- ggplot()+
-  geom_line(data = NPi_pred_combined, aes(x = Mass_per_loss, group = model_iteration, y = exp(fit), color = initial_NP), alpha = 0.2)+
+  geom_line(data = gam_preds, aes(x = Mass_per_loss, group = model_iteration, y = exp(fit), color = initial_NP), alpha = 0.2)+
   ylab("N:P Ratio")+
   xlab("Mass Loss (%)")+
   facet_wrap(.~initial_NP, scales = "free")+
@@ -375,7 +380,7 @@ NPi_sens.p<- ggplot()+
 
 #pvalue density plot - p-value from base penalized model shown in red
 
- NPi_pvals.p<-ggplot(data = NPi_p_vals, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.017, color = "red") #base mod p-value
+ NPi_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 0.017, color = "red") #base mod p-value
  
  NPsens_grid<-plot_grid(NPi_sens.p,NPi_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
 #ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/NPi_sens.pdf", NPsens_grid, width = 7.8, height = 9.1, dpi = 600)
@@ -386,25 +391,22 @@ NPi_sens.p<- ggplot()+
 #1. create list of time series to delete
 series_remove <- det_loc_cnp|>filter(!is.na(CN_ratio)&!is.na(initial_CN)&!is.na(Temperature_C_avg))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
+series_remove <- series_remove[1:4]
 
-#2. set up list to populate
-gam_list.names <- c("preds", "summaries")
-gam_list <- vector("list", length(gam_list.names))
-names(gam_list) <- gam_list.names
+cl <- parallel::makeCluster(4)
 
-#3. for loop
-for (i in 1:length(series_remove)) {
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+registerDoSNOW(cl)
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
   remove.i <- series_remove[i]
-  #retain identity for each series  
   id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
 #fit gam for plotting predictions
   data.i <- det_loc_cnp|>filter(series_index != remove.i)
-  gam.i_pvals <-  gam(data = data.i, CN_ratio ~  
-                  ti(Mass_per_loss) + ti(initial_CN)+
-                  ti(Mass_per_loss, initial_CN)+
-               ti(Mass_per_loss,initial_CN, Temperature_C_avg, m = 1)+
-                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
-                   method = "ML", family = Gamma(link = "log"),select = TRUE)  
   
   gam.i_preds <- gam(data = data.i, CN_ratio ~  
                   ti(Mass_per_loss) + ti(initial_CN)+
@@ -412,30 +414,33 @@ for (i in 1:length(series_remove)) {
                ti(Mass_per_loss,initial_CN, Temperature_C_avg, m = 1)+
                         s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
                    method = "REML", family = Gamma(link = "log"),select = TRUE) 
-  
-gam_list$summaries[[i]] <- tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,"))|>bind_cols(id.i)
 
-gam_list$preds[[i]] <- predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),Temperature_C_avg = c(7.5,10,15,20)))%>%
+predict_gam(type = "link", gam.i_preds, length_out = 1000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),Temperature_C_avg = c(7.5,10,15,20)))%>%
    mutate(Temperature_C_avg = as_factor(Temperature_C_avg), initial_CN = as_factor(initial_CN))|>
   select(-series_index)|>
   mutate(model_iteration = i, series_index = as_factor(remove.i))
-
-print(paste("Completed iteration", i), sep = " ")
 }
-#4. Combine model information
-## Combine predictions
-CN_Temp_pred_combined <- map_dfr(gam_list$preds, bind_rows)
-#saveRDS(CN_Temp_pred_combined,"Model_Objects/CN_Temp_sens_preds.rds")
-#CN_Temp_pred_combined<-readRDS("Model_Objects/CN_Temp_sens_preds.rds")
 
-## Combine p-vals
-CN_Temp_p_vals <- map_dfr(gam_list$summaries, bind_rows)
-#saveRDS(CN_Temp_p_vals,"Model_Objects/CN_Temp_sens_pvals.rds")
-#CN_Temp_p_vals<-readRDS("Model_Objects/CN_Temp_sens_pvals.rds")
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+    gam.i_pvals <-  gam(data = data.i, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, Temperature_C_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE)  
 
-##Plot of predictions generated for each model with data held out
+  tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,initial_CN,"))|>bind_cols(id.i)
+}
 
-CN_Temp_sens.p<- ggplot(data = CN_Temp_pred_combined)+
+
+
+CN_Temp_sens.p<- ggplot(data = gam_preds)+
   geom_line(aes(x = Mass_per_loss, y = exp(fit), color = initial_CN, group = series_index), alpha = 0.2)+
   ylab("C:N Ratio")+
   xlab("Mass Loss (%)")+
@@ -446,15 +451,159 @@ CN_Temp_sens.p<- ggplot(data = CN_Temp_pred_combined)+
     NULL
  CN_Temp_sens.p
 
- #The anomalies driving patterns in (Initial CN 70,50 & Temp 15,20) are all driven by series 756
- 
 
 #pvalue density plot - p-value from base penalized model shown in red
 
- CN_Temp_pvals.p<-ggplot(data = CN_Temp_p_vals, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
+ CN_Temp_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
  
  CN_Tempsens_grid<-plot_grid(CN_Temp_sens.p,CN_Temp_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
 #ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_Temp_sens.pdf", CN_Tempsens_grid, width = 7.8, height = 9.1, dpi = 600)
+
+```
+
+```{r CN X NO3}
+
+series_remove <- det_loc_cnp|>filter(!is.na(CN_ratio)&!is.na(initial_CN)&!is.na(no3_avg))|>distinct(series_index)|>
+  mutate(series_index = as.numeric(series_index))|>pull()
+series_remove <- series_remove[1:2]
+
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+#fit gam for plotting predictions
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+  
+  gam.i_preds <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, no3_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),no3_avg = c(25,50,100)))%>%
+   mutate(no3_avg = as_factor(no3_avg), initial_CN = as_factor(initial_CN))%>%
+  select(-series_index)|>
+  mutate(model_iteration = i, series_index = as_factor(remove.i))
+}
+
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+    gam.i_pvals <-  gam(data = data.i, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, no3_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE)  
+
+    tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,initial_CN,"))|>bind_cols(id.i)
+}
+
+
+
+
+ CN_no3_sens.p<- ggplot(data = gam_preds)+
+  geom_line(aes(x = Mass_per_loss, y = exp(fit), color = initial_CN, group = series_index), alpha = 0.2)+
+  ylab("C:N Ratio")+
+  xlab("Mass Loss (%)")+
+  facet_grid(initial_CN~no3_avg, scales = "free")+
+  scale_color_brewer(palette = "Dark2")+
+  guides(color=guide_legend(title="Initial CN"))+
+   theme_bw()+
+    NULL
+ CN_no3_sens.p
+ 
+
+  CN_no3_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
+ 
+ CN_no3sens_grid<-plot_grid(CN_no3_sens.p,CN_no3_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_no3_sens.pdf", CN_no3sens_grid, width = 7.8, height = 9.1, dpi = 600)
+
+```
+
+```{r CN X PO4}
+
+series_remove <- det_loc_cnp|>filter(!is.na(CN_ratio)&!is.na(initial_CN)&!is.na(srp_avg))|>distinct(series_index)|>
+  mutate(series_index = as.numeric(series_index))|>pull()
+series_remove <- series_remove[1:2]
+
+cl <- parallel::makeCluster(4)
+registerDoSNOW(cl)
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+#fit gam for plotting predictions
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+  
+  gam.i_preds <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, srp_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),srp_avg = c(25,50,100)))%>%
+   mutate(srp_avg = as_factor(srp_avg), initial_CN = as_factor(initial_CN))%>%
+  select(-series_index)|>
+  mutate(model_iteration = i, series_index = as_factor(remove.i))
+}
+
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc_cnp|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc_cnp|>filter(series_index != remove.i)
+    gam.i_pvals <-  gam(data = data.i, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, srp_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE)  
+
+    tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,initial_CN,"))|>bind_cols(id.i)
+}
+
+
+
+
+ CN_srp_sens.p<- ggplot(data = gam_preds)+
+  geom_line(aes(x = Mass_per_loss, y = exp(fit), color = initial_CN, group = series_index), alpha = 0.2)+
+  ylab("C:N Ratio")+
+  xlab("Mass Loss (%)")+
+  facet_grid(initial_CN~srp_avg, scales = "free")+
+  scale_color_brewer(palette = "Dark2")+
+  guides(color=guide_legend(title="Initial CN"))+
+   theme_bw()+
+    NULL
+ CN_srp_sens.p
+ 
+
+  CN_srp_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
+ 
+ CN_srpsens_grid<-plot_grid(CN_srp_sens.p,CN_srp_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
+#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_po4_sens.pdf", CN_srpsens_grid, width = 7.8, height = 9.1, dpi = 600)
 
 ```
 

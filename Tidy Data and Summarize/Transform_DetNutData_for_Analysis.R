@@ -1,16 +1,12 @@
 
 #The purpose of this script is to tidy the data used for analysis in the Detrital Nutrients ms
-#This script created using R 4.1.2
+#This script created using R 4.2.2
 
 
 
 #Read-in libraries
 library(tidyverse)
 library(janitor)
-library(gratia)
-library(mgcv)
-library(tidymv)
-library(RColorBrewer)
 library(here)
 
 #Set up plot themes
@@ -35,9 +31,12 @@ here::i_am("Tidy Data and Summarize/Transform_DetNutData_for_Analysis.R")
 det_raw <- read_csv(here("Tidy Data and Summarize/DetNutSynth_Database_30Aug2022.csv"))
 
 #Variables for analysis
+
+#note this piped flow takes several minutes with update to dplyr 1.1.0 (way longer than before) 
+#this slow down is associated with case_when within mutate, and is a known bug to dplyr devs
 det <- det_raw%>%
   group_by(First_Author, Publication_Title, Time_Series_ID)%>%
-  mutate(series_index = group_indices())%>%#creates a unique index for each time series
+  mutate(series_index = cur_group_id())%>%#creates a unique index for each time series
   ungroup()%>%
   group_by(series_index)%>% #functionally, used to confine any window functions like first() to a time series rather than the first observation of whole dataframe
  #pull initial CNP and ratios
