@@ -465,15 +465,14 @@ CN_Temp_sens.p<- ggplot(data = gam_preds)+
 
 series_remove <- det_loc_cnp|>filter(!is.na(CN_ratio)&!is.na(initial_CN)&!is.na(no3_avg))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
-series_remove <- series_remove[1:2]
 
-cl <- parallel::makeCluster(4)
-registerDoSNOW(cl)
+cl <- parallel::makeCluster(17)
+
 iterations <- length(series_remove)
 pb <- txtProgressBar(max = iterations, style = 3)
 progress <- function(n) setTxtProgressBar(pb, n)
 opts <- list(progress = progress)
-
+registerDoSNOW(cl)
 gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
   
   remove.i <- series_remove[i]
@@ -482,14 +481,14 @@ gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv"
 #fit gam for plotting predictions
   data.i <- det_loc_cnp|>filter(series_index != remove.i)
   
-  gam.i_preds <- gam(data = det_loc_cnp, CN_ratio ~  
+  gam.i_preds <- gam(data = data.i, CN_ratio ~  
                   ti(Mass_per_loss) + ti(initial_CN)+
                   ti(Mass_per_loss, initial_CN)+
                ti(Mass_per_loss,initial_CN, no3_avg, m = 1)+
                         s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
                    method = "REML", family = Gamma(link = "log"),select = TRUE) 
 
-predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),no3_avg = c(25,50,100)))%>%
+predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),no3_avg = c(100,400,1750)))%>%
    mutate(no3_avg = as_factor(no3_avg), initial_CN = as_factor(initial_CN))%>%
   select(-series_index)|>
   mutate(model_iteration = i, series_index = as_factor(remove.i))
@@ -530,7 +529,7 @@ gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv
   CN_no3_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
  
  CN_no3sens_grid<-plot_grid(CN_no3_sens.p,CN_no3_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
-#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_no3_sens.pdf", CN_no3sens_grid, width = 7.8, height = 9.1, dpi = 600)
+ggsave2("C:/Users/Caleb_Robbins/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_no3_sens.pdf", CN_no3sens_grid, width = 7.8, height = 9.1, dpi = 600)
 
 ```
 
@@ -538,15 +537,14 @@ gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv
 
 series_remove <- det_loc_cnp|>filter(!is.na(CN_ratio)&!is.na(initial_CN)&!is.na(srp_avg))|>distinct(series_index)|>
   mutate(series_index = as.numeric(series_index))|>pull()
-series_remove <- series_remove[1:2]
 
-cl <- parallel::makeCluster(4)
-registerDoSNOW(cl)
+cl <- parallel::makeCluster(17)
+
 iterations <- length(series_remove)
 pb <- txtProgressBar(max = iterations, style = 3)
 progress <- function(n) setTxtProgressBar(pb, n)
 opts <- list(progress = progress)
-
+registerDoSNOW(cl)
 gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
   
   remove.i <- series_remove[i]
@@ -555,7 +553,7 @@ gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv"
 #fit gam for plotting predictions
   data.i <- det_loc_cnp|>filter(series_index != remove.i)
   
-  gam.i_preds <- gam(data = det_loc_cnp, CN_ratio ~  
+  gam.i_preds <- gam(data = data.i, CN_ratio ~  
                   ti(Mass_per_loss) + ti(initial_CN)+
                   ti(Mass_per_loss, initial_CN)+
                ti(Mass_per_loss,initial_CN, srp_avg, m = 1)+
@@ -603,7 +601,7 @@ gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv
   CN_srp_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
  
  CN_srpsens_grid<-plot_grid(CN_srp_sens.p,CN_srp_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
-#ggsave2("C:/Users/caleb/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_po4_sens.pdf", CN_srpsens_grid, width = 7.8, height = 9.1, dpi = 600)
+ggsave2("C:/Users/Caleb_Robbins/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/CN_po4_sens.pdf", CN_srpsens_grid, width = 7.8, height = 9.1, dpi = 600)
 
 ```
 
