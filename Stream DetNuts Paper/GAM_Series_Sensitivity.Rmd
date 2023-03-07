@@ -386,7 +386,7 @@ NPi_sens.p<- ggplot()+
 #ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/NPi_sens.pdf", NPsens_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 
-#Nmass x PO4 models
+#Nmass x PO4 model
 ```{r N X PO4}
 
 series_remove <- det_loc|>filter(!is.na(N_mass)&!is.na(initial_N)&!is.na(srp_avg))|>distinct(series_index)|>
@@ -408,7 +408,7 @@ gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv"
 #fit gam for plotting predictions
   data.i <- det_loc|>filter(series_index != remove.i)
   
-  gam.i_preds <- gam(data = det_loc, N_mass ~  
+  gam.i_preds <- gam(data = data.i, N_mass ~  
                   ti(Mass_per_loss) + ti(initial_N)+
                   ti(Mass_per_loss, initial_N, m = 2)+
                   ti(Mass_per_loss,initial_N, srp_avg, m = 1)+ 
@@ -442,8 +442,8 @@ gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv
 
 
  Ni_srp_sens.p<- ggplot(data = gam_preds)+
-  geom_line(aes(x = Mass_per_loss, y = exp(fit), color = initial_N, group = series_index), alpha = 0.2)+
-  ylab("C:N Ratio")+
+  geom_line(aes(x = Mass_per_loss, y = 1/fit, color = initial_N, group = series_index), alpha = 0.2)+
+  ylab("N mass")+
   xlab("Mass Loss (%)")+
   facet_grid(initial_N~srp_avg, scales = "free")+
   scale_color_brewer(palette = "Dark2")+
