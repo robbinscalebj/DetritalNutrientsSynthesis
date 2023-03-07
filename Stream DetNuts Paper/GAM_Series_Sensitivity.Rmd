@@ -386,6 +386,79 @@ NPi_sens.p<- ggplot()+
 #ggsave2("C:/Users/robbi/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/NPi_sens.pdf", NPsens_grid, width = 7.8, height = 9.1, dpi = 600)
 ```
 
+#Nmass x PO4 models
+```{r N X PO4}
+
+series_remove <- det_loc|>filter(!is.na(N_mass)&!is.na(initial_N)&!is.na(srp_avg))|>distinct(series_index)|>
+  mutate(series_index = as.numeric(series_index))|>pull()
+
+cl <- parallel::makeCluster(17)
+
+iterations <- length(series_remove)
+pb <- txtProgressBar(max = iterations, style = 3)
+progress <- function(n) setTxtProgressBar(pb, n)
+opts <- list(progress = progress)
+registerDoSNOW(cl)
+
+gam_preds<-foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+#fit gam for plotting predictions
+  data.i <- det_loc|>filter(series_index != remove.i)
+  
+  gam.i_preds <- gam(data = det_loc, N_mass ~  
+                  ti(Mass_per_loss) + ti(initial_N)+
+                  ti(Mass_per_loss, initial_N, m = 2)+
+                  ti(Mass_per_loss,initial_N, srp_avg, m = 1)+ 
+               s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
+                   method = "REML", family = gaussian(link = "inverse"),select = TRUE)
+
+predict_gam(type = "link", gam.i_preds, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_N = c(3,2,1.5,1.0,0.6,0.3),srp_avg = c(25,50,100)))%>%
+   mutate(srp_avg = as_factor(srp_avg), initial_N = as_factor(initial_N))%>%
+  select(-series_index)|>
+  mutate(model_iteration = i, series_index = as_factor(remove.i))
+}
+
+registerDoSNOW(cl)
+gam_sums <- foreach(i = 1:length(series_remove),.packages = c("tidyverse", "mgcv", "broom", "tidymv"), .combine = rbind, .options.snow = opts,.inorder = TRUE) %dopar% {
+  
+  remove.i <- series_remove[i]
+  id.i <- det_loc|>filter(series_index == remove.i)|>select(First_Author, Publication_Title, Publication_Year, Journal, series_index)|>slice_head(n=1)
+  
+  data.i <- det_loc|>filter(series_index != remove.i)
+    gam.i_pvals <-  gam(data = det_loc, N_mass ~  
+                  ti(Mass_per_loss) + ti(initial_N)+
+                  ti(Mass_per_loss, initial_N, m = 2)+
+                  ti(Mass_per_loss,initial_N, srp_avg, m = 1)+ 
+               s(series_index, Mass_per_loss, bs = "re")+s(series_index, bs = "re"), 
+                   method = "ML", family = gaussian(link = "inverse"),select = TRUE)
+
+    tidy(gam.i_pvals)|>filter(str_detect(term, "Mass_per_loss,initial_N,"))|>bind_cols(id.i)
+}
+
+
+
+
+ Ni_srp_sens.p<- ggplot(data = gam_preds)+
+  geom_line(aes(x = Mass_per_loss, y = exp(fit), color = initial_N, group = series_index), alpha = 0.2)+
+  ylab("C:N Ratio")+
+  xlab("Mass Loss (%)")+
+  facet_grid(initial_N~srp_avg, scales = "free")+
+  scale_color_brewer(palette = "Dark2")+
+  guides(color=guide_legend(title="Initial N (%)"))+
+   theme_bw()+
+    NULL
+ Ni_srp_sens.p
+ 
+
+  Ni_srp_pvals.p<-ggplot(data = gam_sums, aes(x = p.value))+geom_density()+geom_vline(xintercept = 2e-16, color = "red") #base mod p-value
+ 
+ Ni_srpsens_grid<-plot_grid(Ni_srp_sens.p,Ni_srp_pvals.p, nrow = 2, labels = "AUTO", label_size = 20)
+ggsave2("C:/Users/Caleb_Robbins/Dropbox/Detrital Nutrients Synth/Manuscript Dev/Temporal Trends ms/Figures/Sensitivity Figures/Ni_po4_sens.pdf", Ni_srpsens_grid, width = 7.8, height = 9.1, dpi = 600)
+
+```
 #CnxTemp Models
 ```{r}
 #1. create list of time series to delete
