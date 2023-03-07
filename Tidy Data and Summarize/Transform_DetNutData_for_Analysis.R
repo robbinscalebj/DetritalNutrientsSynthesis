@@ -75,7 +75,9 @@ det <- det_raw%>%
          no3_avg = case_when(n_distinct(Water_NO3_ug.L) >1 ~ mean(Water_NO3_ug.L, na.rm = TRUE), 
                              TRUE ~ Water_NO3_ug.L),
          srp_avg = case_when(n_distinct(Water_SRP_ug.L) >1 ~ mean(Water_SRP_ug.L, na.rm = TRUE), 
-                             TRUE ~ Water_SRP_ug.L))%>%
+                             TRUE ~ Water_SRP_ug.L),
+         din_avg = case_when(n_distinct(Water_DIN_ug.L) >1 ~ mean(Water_DIN_ug.L, na.rm = TRUE), 
+                             TRUE ~ Water_DIN_ug.L))%>%
 
   #remove text from variable if not coarse fine or open
   

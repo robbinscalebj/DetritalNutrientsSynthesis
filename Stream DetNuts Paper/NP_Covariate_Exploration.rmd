@@ -36,11 +36,21 @@ ggplot(data=det_loc, aes(x = Temperature_C_avg, y = initial_CN))+geom_point()
 ggplot(data=det_loc, aes(x = Temperature_C_avg, y = initial_N))+geom_point()
 ggplot(data=det_loc, aes(x = no3_avg, y = initial_CN))+geom_point()+scale_x_continuous(limits = c(0,2000))
 ggplot(data=det_loc, aes(x = no3_avg, y = initial_N))+geom_point()+scale_x_continuous(limits = c(0,2000))
+ggplot(data=det_loc, aes(x = Water_NH4_ug.L, y = initial_CN))+geom_point()
+ggplot(data=det_loc, aes(x = Water_NH4_ug.L, y = initial_N))+geom_point()
+ggplot(data=det_loc, aes(x = din_avg, y = initial_CN))+geom_point()+scale_x_continuous(limits = c(0,2000))
+ggplot(data=det_loc, aes(x = din_avg, y = initial_N))+geom_point()
 ggplot(data=det_loc, aes(x = srp_avg, y = initial_CN))+geom_point()
 ggplot(data=det_loc, aes(x = srp_avg, y = initial_N))+geom_point()
 ggplot(data=det_loc, aes(x = Water_TN_ug.L, y = initial_CN))+geom_point()
 ggplot(data=det_loc, aes(x = Water_TN_ug.L, y = initial_N))+geom_point()
 
+det_loc_cnp|>filter(!is.na(Water_NO3_ug.L)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
+det_loc_cnp|>filter(!is.na(Water_NH4_ug.L)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
+det_loc_cnp|>filter(!is.na(din_avg)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
 
 ```
 
@@ -378,6 +388,53 @@ CN_NO3.pred<-predict_gam(type = "link", CN_no3, length_out = 5000,  exclude_term
    xlab("Mass loss (%)")+ggtitle("NO3 x C:N")+theme(legend.position ="none")+
   NULL
  CN_NO3.p
+
+
+```
+
+```{r CN X DIN}
+cn_din_count <- det_loc_cnp|>filter(!is.na(din_avg)&!is.na(CN_ratio)&!is.na(initial_CN))|>
+  distinct(series_index)
+
+CN_base_din <- gam(data = det_loc_cnp[!is.na(det_loc_cnp$din_avg),], CN_ratio ~
+                        te(Mass_per_loss, initial_CN, m = 2)+
+                        s(series_index, Mass_per_loss, bs = "re") + s(series_index, bs = "re"), 
+             method = "ML", family = Gamma(link = "log"), select = TRUE)
+
+
+CN_din_ml <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, din_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "ML", family = Gamma(link = "log"),select = TRUE) 
+
+
+CN_din <- gam(data = det_loc_cnp, CN_ratio ~  
+                  ti(Mass_per_loss) + ti(initial_CN)+
+                  ti(Mass_per_loss, initial_CN)+
+               ti(Mass_per_loss,initial_CN, din_avg, m = 1)+
+                        s(series_index, Mass_per_loss, bs = "re")+ s(series_index, bs = "re"), 
+                   method = "REML", family = Gamma(link = "log"),select = TRUE) 
+
+AIC(CN_base_din,CN_din_ml)
+summary(CN_din_ml)
+appraise(CN_din)
+
+CN_din.pred<-predict_gam(type = "link", CN_din, length_out = 5000,  exclude_terms = c("s(series_index)", "s(series_index, Mass_per_loss)"), values = list(series_index = NULL,Remain_Mass_Category = NULL, initial_CN = c(140,100,70,50,40,25),din_avg = c(100,400,1750)))%>%
+   mutate(fit = ifelse(initial_CN >70 & din_avg == 1750, NA_real_, fit),
+          din_avg = as_factor(din_avg), initial_CN = as_factor(initial_CN),
+          din_avg = fct_recode(din_avg, "0.1 mg/L" = "100", "0.4 mg/L" = "400","1.75 mg/L" = "1750"))
+  
+
+ CN_din.p<- ggplot(data = CN_din.pred)+
+    geom_smooth(se = FALSE, aes(x = Mass_per_loss, y = exp(fit), color = din_avg, linetype = din_avg))+
+   facet_grid(initial_CN~din_avg, scales = "free")+
+   geom_ribbon(aes(x = Mass_per_loss, ymin = exp(fit - 2*se.fit), ymax = exp(fit + 2*se.fit)), alpha = 0.3)+
+   ylab("C:N (molar)")+
+   xlab("Mass loss (%)")+ggtitle("DIN x C:N")+theme(legend.position ="none")+
+  NULL
+ CN_din.p
 
 
 ```
