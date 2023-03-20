@@ -9,6 +9,7 @@ output:
 knitr::opts_chunk$set(echo = FALSE, fig.width = 3, fig.height = 2)
 library(tidyverse)
 library(magrittr)
+library(broom)
 library(datawizard)
 library(EDIutils)
 library(here)
@@ -252,8 +253,20 @@ DetNut_typescond
 ```
 
 
+```{r mass loss histogram}
+det3|>
+  ggplot(aes(x = Mass_per_remaining))+geom_histogram()+
+  scale_x_continuous(trans = "reverse", breaks = c(100,80,60,40,20,0), limits = c(108,-2))+
+  ylab("Observations")+
+  xlab("Mass remaining (%)")+
+  #guides(fill=guide_legend(title="Detritus Type"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_text(size = 15, face = "bold"), axis.title.y = element_text(size = 15), panel.grid = element_blank())+
+  theme(legend.position = "none")
 
-```{r}
+```
+
+```{r core vars}
 cbbPalette1 <- c("#E69F00", "#56B4E9","#D55E00","#009E73")
 cbbPalette2 <- c("#999999", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
 
@@ -372,4 +385,62 @@ plot_grid(g1, g2, nrow = 2)
 
 ```
 
+```{r histogram breakdown rates by litte type}
 
+
+det_k <- det3|>
+  group_by(First_Author, Publication_Title, Time_Series_ID)|>
+  mutate(cohort_id = cur_group_id(), .before = 2)|>
+  mutate(Mass_prop = Mass_per_remaining/100)|>
+  filter(!is.na(Mass_per_remaining)&Mass_prop>0)|>
+  ungroup()|>
+  nest_by(cohort_id, First_Author, Publication_Title, Detritus_Type)|>
+  mutate(lm_fit = list(lm(log(Mass_prop)~Meas_Day+0, data = data)))|>
+  summarize(tidy(lm_fit))
+
+
+ggplot(data = det_k, aes(x = estimate*-1))+geom_histogram()+
+  facet_wrap(.~Detritus_Type, scales = "free") +
+  #scale_x_continuous(trans = "log")+
+  ylab("Frequency")+
+  xlab(expression(paste("Breakdown Rate - k (", d^{-1},")")))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_text(size = 15, face = "bold"), axis.title.y = element_text(size = 15), panel.grid = element_blank())+
+  theme(legend.position = "none")
+
+```
+```{r}
+# want to calculate the % of observations that have structural data
+
+DetNut_types2<- det3%>%
+  group_by(Detritus_Type)%>%
+  summarize(across(c(Lignin_per,Hemicellulose_per, Cellulose_per,Total_Phenolics_per,Tannin_per,Ergosterol_ug.g), ~sum(!is.na(.x))))|>
+  pivot_longer(c(Lignin_per,Hemicellulose_per, Cellulose_per,Total_Phenolics_per,Tannin_per,Ergosterol_ug.g))
+
+ggplot(DetNut_types2|>mutate(name = fct_recode(name, Lignin = "Lignin_per", Hemicellulose = "Hemicellulose_per", Cellulose = "Cellulose_per", Phenolics = "Total_Phenolics_per", Tannins = "Tannin_per", Ergosterol = "Ergosterol_ug.g")), aes(y = value, x = name,  fill = Detritus_Type))+
+  geom_bar(stat = "identity", color = "black", width = 0.75)+
+  scale_fill_manual(values=cbbPalette2)+
+  ylab("Observations")+
+  xlab("Variable")+
+  guides(fill=guide_legend(title="Detritus Type"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
+  #theme(legend.position = "none")+
+  NULL
+
+DetNut_types3<- det3%>%
+  group_by(Detritus_Type)%>%
+  summarize(across(c(Water_NO3_ug.L, Water_SRP_ug.L, DOC_mg.L, pH, Temperature_C), ~sum(!is.na(.x))))|>
+  pivot_longer(c(Water_NO3_ug.L, Water_SRP_ug.L, DOC_mg.L, pH, Temperature_C))
+
+ggplot(DetNut_types3|>mutate(name = fct_recode(name, SRP = "Water_SRP_ug.L", NO3 = "Water_NO3_ug.L", Temp = "Temperature_C", DOC = "DOC_mg.L")), aes(y = value, x = name,  fill = Detritus_Type))+
+  geom_bar(stat = "identity", color = "black", width = 0.75)+
+  scale_fill_manual(values=cbbPalette2)+
+  ylab("Observations")+
+  xlab("Variable")+
+  guides(fill=guide_legend(title="Detritus Type"))+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
+  #theme(legend.position = "none")+
+  NULL
+```
