@@ -1,0 +1,226 @@
+---
+title: "DetNutSynth_CleanFiles"
+output: html_document
+---
+
+This markdown shows the process for compiling proofed .txt files into the final Detrital Nutrients dataset (.csv). This markdown was created using R version 4.2.1.
+
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(janitor)
+library(lubridate)
+library(here)
+
+```
+
+
+```{r Set working directory}
+here::i_am("Tidy Data and Summarize/DetNut_Tidy_Database_18Mar2023.Rmd")
+here()
+DetNut_Files<-list.files("Final Proofed Files", full.names = TRUE) 
+head(DetNut_Files)
+
+```
+
+First, pull all files together into a list, while individually parsing each files column names. Explicitly included any present spellings of column names (i.e., even if incorrect) so they will parse the same as the correctly named versions of those variables - essential for name repair later. This spits lots of warnings by design, but will be rectified in next step.
+```{r Read files and parse variables}
+
+DetNut<-DetNut_Files%>%
+  map(~read_tsv(.x, col_types = cols(First_Author = "c",
+                                     Title = "c",
+                                     Year = "c",
+                                     Journal = "c",
+                                     DOI = "c",
+                                     System = "c",
+                                     Flow_Category = "c",
+                                     Decay_Method = "c",
+                                     Mesh_Size_Category = "c",
+                                     Setting = "c",
+                                     Manipulation = "c",
+                                     LULC_Category = "c",
+                                     Light_Category = "c",
+                                     Detritus_Type = "c",
+                                     Detritus_Condition = "c",
+                                     Detritus_Species = "c",
+                                     Remain_Mass_Category = "c",
+                                     Component_Mass_Category = "c",
+                                     Component_Ratio_type = "c",
+                                     Geog_Locale = "c",
+                                     Geog_locale = "c",
+                                     Lat_Long = "c",
+                                     Start_Date = "c",
+                                     LULC_Quantified = "c",
+                                     Inverts_AddInfo = "c",
+                                     Microbes_AddInfo = "c",
+                                     CNPFluxes_AddInfo = "c",
+                                     C_Method = "c",
+                                     C_method = 'c',
+                                     N_Method = "c",
+                                     N_method = "c",
+                                     P_Method = "c",
+                                     P_method = "c",
+                                     Ratio_Type = "c",
+                                     Ratio_type = "c",
+                                     Notes = "c",
+                                     .default = "n"))
+         )
+
+names(DetNut) <- DetNut_Files%>%
+  str_remove("Final Proofed Files/")
+# pulls names to make it easier to identify later
+
+```
+
+Repair names to reconcile minor errors in column names across final .txt files. Spits more warning errors, but again by design. 
+
+```{r repair names}
+#this map_if function can be used to repair names if they appear in a nested tibble
+DetNut2 <- DetNut%>%
+  map_if(~all("Mass_Per_Remaining" %in% colnames(.)), 
+         ~rename(.,Mass_per_remaining = Mass_Per_Remaining))%>% 
+  map_if(~all("C_Method" %in% colnames(.)), 
+         ~rename(.,C_method = C_Method))%>%
+  map_if(~all("N_Method" %in% colnames(.)), 
+         ~rename(.,N_method = N_Method))%>%
+  map_if(~all("P_Method" %in% colnames(.)), 
+         ~rename(.,P_method = P_Method))%>%
+  map_if(~all("Geog_locale" %in% colnames(.)), 
+         ~rename(.,Geog_Locale = Geog_locale))%>%
+  map_if(~all("Component_Ratio_type" %in% colnames(.)), 
+         ~rename(.,Ratio_Type = Component_Ratio_type))%>%
+   map_if(~all("Ratio_type" %in% colnames(.)), 
+         ~rename(.,Ratio_Type = Ratio_type))%>%
+   map_if(~all("Cond_us.cm" %in% colnames(.)), 
+         ~rename(.,Cond_uS.cm = Cond_us.cm))%>%
+    map_if(~all("Total_phenolics" %in% colnames(.)), 
+         ~rename(.,Total_Phenolics_per = Total_phenolics))%>%
+  map_df(as_tibble)%>%
+  remove_empty(which = "rows")%>%
+  rename(Publication_Title = Title, 
+         Publication_Year = Year, 
+         CN_ratio = CN_molar,
+         CP_ratio = CP_molar,
+         NP_ratio = NP_molar,
+         CNP_Ratio_Type = Ratio_Type)
+  
+```
+
+
+
+Reconcile factor level names used across studies files. These are mostly minor details like spelling errors, or where data collectors assigned slightly different names for the same categories where anticipated (pre-data collection) factor levels were not clearly applicable. Final chunk of code fills in ratio data where possible (e.g., %C and %N are available, but C:N is not recorded)
+
+```{r reconcile factors}
+
+DetNut3<-DetNut2%>%
+  mutate(Detritus_Type = fct_collapse(Detritus_Type, 
+                      leaves = c("leaf", "leaf_disk", "plant_leaves", "leaves"),
+                      culms = c("culm", "culms"),
+                      roots = c("roots", "plant_roots"),
+                      wood_veneer = c("veneer", "wood_veneer"),
+                      stems_and_leaves = c("stem_leaves", "leaf_stem", "leaves_stem", "stems_leaves"),
+                      petioles = c("petioles", "plant_petioles"),
+                      shoots = "plant_shoot",
+                      roots_and_leaves = "roots_leaves",
+                      stems_and_roots_and_leaves = "stem_roots_leaves"))%>%
+  mutate(Remain_Mass_Category = fct_recode(Remain_Mass_Category, afdm = "AFDM", dm = "DM"))%>%
+  mutate(Mesh_Size_Category = case_when(Mesh_Size_Category == "coarse" | Mesh_Size_Category == "fine" | Mesh_Size_Category == "open" ~ Mesh_Size_Category,
+                              Mesh_Size_Category == "SRP" | is.na(Mesh_Size_Category) ~ "NA",
+                              Mesh_Size_Category == 0 ~ "open",
+                              TRUE ~ str_remove_all(Mesh_Size_Category, " mm|mm|_mm| |_1|-")))%>%
+  mutate(Setting = fct_collapse(Setting, 
+                                lab = c("lab", "laboratory"),
+                                field = c("field", "Field"),
+                                mesocosm = c("mesocosm", "outdoor_mesocosm"),
+                                microcosm = "microcosms"))|>
+  mutate(System = ifelse(Setting != "field"&!is.na(Setting)&is.na(System), "other", System))|>
+  mutate(System = fct_collapse(System,
+                               stream = c("stream", "Stream"),
+                               wetland = c("wetland", "Wetland","marsh"),
+                               lake = c("Lake", "lake")))%>%
+  mutate(Component_Mass_Category = fct_collapse(Component_Mass_Category,
+                                                dm = c("dm_postleach", "DM"),
+                                                afdm = c("afdm", "AFDM", "afdm_postleach"),
+                                                dm_afdm_mix = "dm_afdm"))%>%
+  mutate(Detritus_Condition = fct_collapse(Detritus_Condition,
+                                         senesced = c("scenesced","senescent"),
+                                         fresh = c("fresh", "green")))%>%
+  mutate(Detritus_Species = str_replace_all(Detritus_Species,"_", " "))%>%
+  mutate(Journal = str_replace_all(Journal,"_"," "),
+         Journal = str_remove_all(Journal, "\UFFFD"),
+         Journal = fct_collapse(Journal, 
+                                `Freshwater Science` = "FRESHWATER SCIENCE",
+                                `Aquatic Botany` = c("AQUATIC BOTANY","AquaticBotany"),
+                                `Biological Invasions` = "Biol Invasions",
+                                `Fundamental and Applied Limnology` = "Fundamental and applied Limnology",
+                                `Archiv fur Hydrobiologie` = c("Archiv fr Hydrobiologie", "Archiv Fr Hydrobiologie")),
+         Publication_Title = str_remove_all(Publication_Title, "\UFFFD"),)%>%
+  mutate(Decay_Method = fct_collapse(Decay_Method, 
+                                     beaker = c("Beaker", "beaker"),
+                                     litter_bag = c("litter_bag", "litter_ bag", "litter_bags", "leaf_pack"), 
+                                     string = c("nylon_string", "string")))%>%
+  mutate(LULC_Category = str_replace_all(LULC_Category, "_", " "),
+         LULC_Category = str_replace(LULC_Category, "forested", "forest"))%>%
+  mutate(Light_Category = fct_collapse(Light_Category, 
+                                       shade = c("shade", "shaded"),
+                                       dark = c("Dark", "dark","closed"),
+                                       light = c("Light", "open", "PAR_only", "PAR_and_UVA", "PAR_UVA_UVB")))%>%
+  mutate(Geog_Locale = str_replace_all(Geog_Locale,"_"," "),
+         Geog_Locale = str_remove_all(Geog_Locale, "\UFFFD"))%>%
+  mutate(Lat_Long = str_replace_all(Lat_Long, "\UFFFD", "_"),
+         Lat_Long = str_replace_all(Lat_Long, ",", "_"),
+         Lat_Long = str_replace_all(Lat_Long, ", ", "_"))%>%
+  separate(Lat_Long, into = c("Latitude", "Longitude"), remove = FALSE, sep = "_")%>%
+  #mutate(Lat_Long = str_replace_all(Lat_Long, "_", ","))%>%
+  #if both elemental percents for ratio are present calculate to ensure molar,
+  mutate(CN_ratio = case_when(!is.na(C_per) & !is.na(N_per) & is.na(CNP_Ratio_Type) ~ ((C_per/N_per)*(14/12)),
+                              TRUE ~ CN_ratio),
+         CP_ratio = case_when(!is.na(C_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ ((C_per/P_per)*(31/12)),
+                              TRUE ~ CP_ratio),
+         NP_ratio = case_when(!is.na(N_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ ((N_per/P_per)*(31/14)),
+                              TRUE ~ NP_ratio))%>%
+  mutate(CNP_Ratio_Type = case_when(!is.na(C_per) & !is.na(N_per) & is.na(CNP_Ratio_Type) ~ "molar", 
+                                    TRUE ~ CNP_Ratio_Type),
+         CNP_Ratio_Type = case_when(!is.na(C_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ "molar", 
+                                    TRUE ~ CNP_Ratio_Type),
+         CNP_Ratio_Type = case_when(!is.na(N_per) & !is.na(P_per) & is.na(CNP_Ratio_Type) ~ "molar", 
+                                    TRUE ~ CNP_Ratio_Type))
+
+```
+
+Not all Start_Date entries have all information (e.g., some papers report only year or month of incubation start, or not clear at all). Following converts the many (and non-standard) formats of dates found in Start_Date column to separate (Start_)Year, Month, and Day columns.
+ 
+```{r reconcile date formatting and remove non-UTF-8 characters}
+
+DetNut4 <- DetNut3%>%
+#create helper column to parse standard date formats - sets up a flag by which to conditionally operate on only non-standard dates with the Start_Date column. Will fix non-parsers in next step.
+  mutate(Start_Date2 = parse_date_time(Start_Date, c("dby", "dbY")))%>%
+#create Start_Year column - convert Date with all alphabet character to NA (no year included)
+  mutate(Start_Year = case_when(str_detect(Start_Date, "^[:alpha:]+$") ~ NA_character_,
+                                is.na(Start_Date2) ~str_remove_all(Start_Date, "[:alpha:]"), #if non-standard date with alpha+numeric character, remove alphabetical (only year characters remain)
+                                !is.na(Start_Date2) ~ as.character(year(Start_Date2)), #pull year from standard date stored in helper column
+                                str_detect(Start_Date, "^[:digit:]+$") ~ Start_Date),#if Start_Date is only a number (i.e., all digits), pull value into Start_Year
+         
+#Create Start_Month - same previous step, but for month/alphabet characters rather than digit characters
+         Start_Month = case_when(str_detect(Start_Date, "^[:digit:]+$") ~ NA_character_,
+                                 is.na(Start_Date2) ~ str_remove_all(Start_Date, "[:digit:]"),
+                                 !is.na(Start_Date2) ~ as.character(month(Start_Date2)),
+                                 str_detect(Start_Date, "^[:alpha:]+$") ~ Start_Date), 
+#convert month names to month numbers
+         Start_Month = ifelse(str_detect(Start_Month,"^[:alpha:]+$"), match(Start_Month, month.name), Start_Month),
+         Start_Day = day(Start_Date2))%>% #only standard date formats included days, so just pull from there
+  select(-Start_Date, -Start_Date2)%>% #remove Start_Date cols - no longer needed
+  relocate(Start_Year, Start_Month, Start_Day, .after = Meas_Day)|>
+  #remove non-UTF-8 characters from any strings
+  mutate(across(.cols = everything(), ~iconv(., "UTF-8", "UTF-8",sub='')))
+
+```
+
+
+
+{r write tidied database}
+#write current version of database file 
+DetNut4%>%
+  write_csv(here("Tidy Data and Summarize/DetNutSynth_Database_18Mar2023.csv"))
+
