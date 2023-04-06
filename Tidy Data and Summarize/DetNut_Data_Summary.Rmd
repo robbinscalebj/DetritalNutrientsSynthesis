@@ -8,11 +8,15 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, fig.width = 3, fig.height = 2)
 library(tidyverse)
+library(ggpubr)
+library(cowplot)
 library(magrittr)
 library(broom)
 library(datawizard)
-library(EDIutils)
 library(here)
+devtools::install_github('dgrechka/RFc', build_vignettes = FALSE)
+devtools::install_github('guillembagaria/ggbiome', build_vignettes = FALSE)
+
 here::i_am("Tidy Data and Summarize/DetNut_Data_Summary.Rmd")
 ```
 
@@ -298,7 +302,8 @@ DetNut_system<- det3%>%
   summarize(across(c(C_per, N_per, P_per, CN_ratio,CP_ratio,NP_ratio), ~sum(!is.na(.x))))|>
   pivot_longer(c(C_per, N_per, P_per, CN_ratio,CP_ratio,NP_ratio))|>
   mutate(name = fct_relevel(name, "C_per", "N_per", "P_per", "CN_ratio","CP_ratio","NP_ratio"),
-         name = fct_recode(name, `C (%)`="C_per", `N (%)`="N_per", `P (%)`="P_per", `C:N`="CN_ratio",`C:P`="CP_ratio",`N:P`="NP_ratio"))
+         name = fct_recode(name, `C (%)`="C_per", `N (%)`="N_per", `P (%)`="P_per", `C:N`="CN_ratio",`C:P`="CP_ratio",`N:P`="NP_ratio"),
+         System = fct_relevel(System, "Stream", "Lake", "Wetland", "Lab or Mesocosm"))
 
 det_sys.p<-ggplot(DetNut_system, aes(y = value, x = name,  fill = System))+
   geom_bar(stat = "identity", color = "black", width = 0.75)+
@@ -308,8 +313,9 @@ det_sys.p<-ggplot(DetNut_system, aes(y = value, x = name,  fill = System))+
   guides(fill=guide_legend(title="System"))+
   theme_bw()+
   theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
-  theme(legend.position = "none")
-
+  theme(legend.position = "none")+
+  NULL
+det_type.p
 det_sys.p
 
 ```
@@ -443,4 +449,32 @@ ggplot(DetNut_types3|>mutate(name = fct_recode(name, SRP = "Water_SRP_ug.L", NO3
   theme(axis.text = element_text(size = 12, face = "bold"), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
   #theme(legend.position = "none")+
   NULL
+```
+
+
+
+```{r check lat longs}
+
+lat_longs <- det3|>
+  filter(System !="Lab")|>
+  group_by(First_Author, Publication_Title, Publication_Year, Journal,DOI)|>
+  distinct(Lat_Long)
+
+lat_longs|>write_csv("C:/Users/caleb/Desktop/lat_longs2.csv")
+
+
+test_coords <- lat_longs|>ungroup()|>slice_head(n = 2)|>select(Lat_Long, First_Author)|>
+  separate(Lat_Long, into = c("Lat", "Long"), sep = ",")|>
+  mutate(across(c(Lat,Long), as.numeric))
+
+#library(ggbiome)
+install.packages("geodata")
+library(geodata)
+derp<-gd_get_biome(data = test_coords, si_lat = "Lat", si_long = "Long")
+
+#the values from worldclim_tile look ridiculous
+worldclim_tile(lat = 40, lon = -90, path = "C:/Users/caleb/Desktop/test/", var = "bio")
+
+library(raster)
+BClim2 <- getData(name="worldclim", var="bio", res=0.5, lat=40, lon=-90, path="C:/Users/caleb/Desktop/test/") #doesn't work
 ```
