@@ -4,8 +4,9 @@ library(tidyverse)
 library(lubridate)
 library(ncdf4)
 library(here)
+library(furrr)
 
-here::i_am("Tidy Data and Summarize/ClimateData/transform_climate_data.R")
+here::i_am("Tidy Data and Summarize/ClimateData/climate_data_to_df.R")
 
 
 # MAP
@@ -32,8 +33,8 @@ get_annual_precip <- function(ncd_file){
     summarize(annual_precip_mm = sum(pr))
 }
 
-
-annual_precips <- map_dfr(list.files(here("Tidy Data and Summarize/ClimateData/CruPrecip/"), full.names = TRUE), get_annual_precip)|>
+future::plan(multicore)
+annual_precips <- future_map_dfr(list.files(here("Tidy Data and Summarize/ClimateData/CruPrecip/"), full.names = TRUE), get_annual_precip)|>
   group_by(lat, lon)|>
   summarize(mean_annual_precip_mm = mean(annual_precip_mm))
 
@@ -64,8 +65,8 @@ get_annual_temp <- function(ncd_file){
     summarize(annual_temp_C = mean(tas))
 }
 
-
-annual_temps <- map_dfr(list.files(here("Tidy Data and Summarize/ClimateData/CruTemp/"), full.names = TRUE), get_annual_temp)|>
+future::plan(multicore)
+annual_temps <- future_map_dfr(list.files(here("Tidy Data and Summarize/ClimateData/CruTemp/"), full.names = TRUE), get_annual_temp)|>
   group_by(lat, lon)|>
   summarize(mean_annual_temp_C = mean(annual_temp_C))
 
@@ -75,7 +76,7 @@ annual_temps|>write_csv(here("Tidy Data and Summarize/ClimateData/MAT_0.5x0.5.cs
 
 
 #### 
-clim_obj2 <- nc_open(here("Tidy Data and Summarize/ClimateData/CruTemp/CRU_mean_temperature_mon_1x1_global_2016_v4.03.nc"))
+clim_obj2 <- nc_open(here("Tidy Data and Summarize/ClimateData/CruTemp/CRU_mean_temperature_mon_0.5x0.5_global_2016_v4.03.nc"))
 
 ncatt_get(clim_obj, "pr")
 ncatt_get(clim_obj, "lat")
