@@ -1,0 +1,11 @@
+raw data are netcdf files with monthly mean precip and temperature data from Cru for 0.5 x 0.5 lat/long grids across global surface. Data covers years ~1960-2015. 
+
+Downloaded from Copernicus data store: https://cds.climate.copernicus.eu/#!/home
+
+Taken from Copernicus data user guide: 
+"The CRU TS (Climatic Research Unit gridded Time Series) dataset provides a high-resolution, monthly grid of land-based (excluding Antarctica) 
+observations going back to 1901 and consists of ten observed and derived variables. 
+There are no missing values in the defined domain. Individual station series are anomalised using their 1961–1990 observations, 
+then gridded to a 0.5° regular grid using angular distance weighting (ADW); the resulting anomaly grids are converted to actuals 
+(values, not anomalies) for publication using the CRU CL v1.0 climatologies. 
+ Within this CDS record, only temperature and daily extremes have been published." 
