@@ -16,9 +16,9 @@ mat_map <- full_join(mat_df, map_df, by = c("lon", "lat"))|>
 #read-in detrital nutrients data  filter to 'field' studies only
 
 det_df <- read_csv(here("Tidy Data and Summarize/DetNutSynth_Database_18Mar2023.csv"))|>
-  filter(Setting == "field")
+  filter(Setting != "lab")
 
-length(unique(det_df$Lat_Long)) #158 unique lat long coords...
+length(unique(det_df$Lat_Long)) #179
 det_latlongs <- unique(det_df$Lat_Long)
 #find nearest grid values
 
@@ -41,8 +41,6 @@ nearest <- grid_points  %>%  mutate(dist = distHaversine(cbind(as.numeric(long),
   select(-dist, -lat.5, -long.5, -lat, -long)
 
 
-
-
 mean_annual_precip_mm <- nearest$mean_annual_precip_mm
 mean_annual_temp_C <- nearest$mean_annual_temp_C
 
@@ -57,7 +55,8 @@ biome <- sp::over(
 # 4.1 Append biome to data
 biomes <- tibble(biome)|>
   bind_cols(nearest|>select(Lat_Long))|>
-  filter(!(Lat_Long == "37.150000_-2.000000" & biome == "Subtropical desert")) #issue with duplicating a lat long for jesus-casa publication
+  filter(!(Lat_Long == "37.150000_-2.000000" & biome == "Subtropical desert"))|> #issue with duplicating a lat long for jesus-casa publication
+  rename(Biome = "biome")
 
 
 biomes|>write_csv(here("Tidy Data and Summarize/ClimateData/biome_by_latlong.csv"))
