@@ -97,7 +97,7 @@ DetNut2 <- DetNut%>%
     map_if(~all("Total_phenolics" %in% colnames(.)), 
          ~rename(.,Total_Phenolics_per = Total_phenolics))%>%
   map_df(as_tibble)%>%
-  remove_empty(which = "rows")%>%
+  janitor::remove_empty(which = "rows")%>%
   rename(Publication_Title = Title, 
          Publication_Year = Year, 
          CN_ratio = CN_molar,
@@ -190,7 +190,8 @@ DetNut3<-DetNut2%>%
                                     TRUE ~ CNP_Ratio_Type))%>%
   left_join(biomes, by = "Lat_Long")|> #join biome data
   relocate(Biome, .after = Setting)|>
-  separate(Lat_Long, into = c("Latitude", "Longitude"), remove = TRUE, sep = "_")
+  separate(Lat_Long, into = c("Latitude", "Longitude"), remove = TRUE, sep = "_")|>
+  mutate(Longitude = str_trim(Longitude))
 
 ```
 
@@ -227,5 +228,5 @@ DetNut4 <- DetNut3%>%
 {r write tidied database}
 #write current version of database file 
 DetNut4%>%
-  write_csv(here("Tidy Data and Summarize/DetNutSynth_Database_9May2023.csv"))
+  write_csv(here("Tidy Data and Summarize/DetNutSynth_Database_9May2023.1.csv"))
 

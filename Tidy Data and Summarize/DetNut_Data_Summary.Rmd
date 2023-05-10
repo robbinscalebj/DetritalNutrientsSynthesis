@@ -14,8 +14,6 @@ library(magrittr)
 library(broom)
 library(datawizard)
 library(here)
-devtools::install_github('dgrechka/RFc', build_vignettes = FALSE)
-devtools::install_github('guillembagaria/ggbiome', build_vignettes = FALSE)
 
 here::i_am("Tidy Data and Summarize/DetNut_Data_Summary.Rmd")
 ```
@@ -23,7 +21,7 @@ here::i_am("Tidy Data and Summarize/DetNut_Data_Summary.Rmd")
 ```{r read datafile, include = FALSE, message = FALSE, warning = FALSE}
 
 
-det <- read_csv(here("Tidy Data and Summarize/DetNutSynth_Database_30Aug2022.csv"))
+det <- read_csv(here("Tidy Data and Summarize/DetNutSynth_Database_9May2023.csv"))
 
 
 ```
@@ -120,7 +118,7 @@ select(-`Measurement Type:`)|>
   rename(Description = "Definition:", Variable = "variable", `Variable Type` = "Storage Type:")
 
 
-var_info_table|>write_csv("C:/Users/caleb/Desktop/DetNut_Metatable.csv")
+#var_info_table|>write_csv("C:/Users/caleb/Desktop/DetNut_Metatable.csv")
 
 ```
 
@@ -391,7 +389,7 @@ plot_grid(g1, g2, nrow = 2)
 
 ```
 
-```{r histogram breakdown rates by litte type}
+```{r histogram breakdown rates by litter type}
 
 
 det_k <- det3|>
@@ -452,29 +450,51 @@ ggplot(DetNut_types3|>mutate(name = fct_recode(name, SRP = "Water_SRP_ug.L", NO3
 ```
 
 
+```{r}
+det3|>
+  group_by(First_Author, Publication_Title, Publication_Year)|>
+  slice_head(n = 1)|>
+  ungroup()|>
+  count(Publication_Year)|>
+  mutate(sum = cumsum(n))|>
+ggplot()+
+  geom_line(aes(x = Publication_Year, y = sum), linewidth = 1.5)+
+  geom_bar(aes(x = Publication_Year, y = n), stat = "identity", fill = "orange")+
+  scale_x_continuous(breaks = c(1975,1980,1990,2000,2010,2020))+
+  scale_y_continuous(breaks = c(0,10,25,50,100,125))+
+  ylab("Count")+
+  xlab("Publication Year")+
+  theme_bw()+
+  theme(axis.text = element_text(size = 12, face = "bold"), axis.title = element_text(size = 15))
 
-```{r check lat longs}
 
-lat_longs <- det3|>
-  filter(System !="Lab")|>
-  group_by(First_Author, Publication_Title, Publication_Year, Journal,DOI)|>
-  distinct(Lat_Long)
+biome_obs <- det3|>
+  ungroup()|>
+  count(Biome)|>
+  drop_na()|>
+  mutate(Biome = as_factor(Biome),
+         Biome = fct_reorder(Biome, -n))|>
+  ggplot()+
+  geom_bar(aes(x = Biome, y = n),stat= "identity")+
+  theme_bw()+
+  theme(axis.text.y = element_text(size = 12, face = "bold"),axis.text.x = element_text(size = 12, face = "bold", vjust = 0.75), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 1))+
+  ylab("Observations")
 
-lat_longs|>write_csv("C:/Users/caleb/Desktop/lat_longs2.csv")
 
+biome_ts <- det3|>
+  group_by(series_index)|>
+  slice_head(n = 1)|>
+  ungroup()|>
+  count(Biome)|>
+  drop_na()|>
+  mutate(Biome = as_factor(Biome),
+         Biome = fct_reorder(Biome, -n))|>
+  ggplot()+
+  geom_bar(aes(x = Biome, y = n),stat= "identity")+
+  theme_bw()+
+  theme(axis.text.y = element_text(size = 12, face = "bold"),axis.text.x = element_text(size = 12, face = "bold", vjust = 0.75), axis.title.x = element_blank(), axis.title.y = element_text(size = 15))+
+  scale_x_discrete(labels = function(x) str_wrap(x, width = 1))+
+  ylab("# Time Series")
 
-test_coords <- lat_longs|>ungroup()|>slice_head(n = 2)|>select(Lat_Long, First_Author)|>
-  separate(Lat_Long, into = c("Lat", "Long"), sep = ",")|>
-  mutate(across(c(Lat,Long), as.numeric))
-
-#library(ggbiome)
-install.packages("geodata")
-library(geodata)
-derp<-gd_get_biome(data = test_coords, si_lat = "Lat", si_long = "Long")
-
-#the values from worldclim_tile look ridiculous
-worldclim_tile(lat = 40, lon = -90, path = "C:/Users/caleb/Desktop/test/", var = "bio")
-
-library(raster)
-BClim2 <- getData(name="worldclim", var="bio", res=0.5, lat=40, lon=-90, path="C:/Users/caleb/Desktop/test/") #doesn't work
 ```
